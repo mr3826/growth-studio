@@ -584,7 +584,7 @@ async function executeRenderJob(job, project) {
 }
 
 // Start server if run directly
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   const server = await buildServer();
   try {
     await server.listen({ port: PORT, host: HOST });
