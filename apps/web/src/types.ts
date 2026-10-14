@@ -25,6 +25,59 @@ export interface Project {
       destination: string;
     };
     claimEvidenceNotes?: string;
+    productTruthProfile?: Array<{
+      id: string;
+      category: string;
+      statement: string;
+      verificationStatus: 'verified_live' | 'approved_demo' | 'planned' | 'unknown';
+      proofAssetId?: string;
+      notes?: string;
+    }>;
+    concepts?: Array<{
+      id: string;
+      angleTitle: string;
+      angleType: 'problem_solution' | 'outcome_story' | 'product_proof' | 'educational' | 'direct_response';
+      hookText: string;
+      targetPain: string;
+      treatment: string;
+      suggestedDuration: number;
+      suggestedTemplateId: 'bold_kinetic' | 'guided_product_story' | 'app_showcase';
+      sceneOutline: Array<{
+        sceneNumber: number;
+        role: string;
+        summary: string;
+      }>;
+      voiceStyle: string;
+      riskNotes: string;
+      creativeRationale: string;
+    }>;
+    selectedConceptId?: string;
+    creativeAudit?: {
+      hookScore: number;
+      benefitsScore: number;
+      factsScore: number;
+      brandScore: number;
+      pacingScore: number;
+      mobileLegibilityScore: number;
+      languageScore: number;
+      overallScore: number;
+      summary: string;
+      suggestions: Array<{
+        category: 'hook' | 'headline' | 'narration' | 'pacing' | 'motion' | 'claims' | 'cta';
+        severity: 'high' | 'medium' | 'low' | 'info';
+        targetSceneId: string;
+        currentText: string;
+        proposedText: string;
+        rationale: string;
+      }>;
+      auditedAt?: string;
+      model?: string;
+    };
+    conceptsGeneratedAt?: string;
+    conceptsModel?: string;
+    prohibitedPhrases?: string[];
+    benefits?: string[];
+    category?: string;
   };
   brand: {
     name: string;
@@ -100,6 +153,11 @@ export interface Project {
     };
     afterTransition?: string;
     transitionDurationSeconds?: number;
+    approvalStatus?: 'draft' | 'approved' | 'locked';
+    isApproved?: boolean;
+    pronunciationNotes?: string;
+    claims?: Array<{ claimText: string; proofAssetId?: string; status?: string }>;
+    provenance?: any;
   }>;
   audio?: {
     mode?: 'silent' | 'imported_voice' | 'generated_voice' | 'music_only' | 'voice_and_music';
@@ -206,5 +264,92 @@ export interface NarrationStatus {
   model: string;
   voices: Array<{ id: string; name: string; gender?: string; default?: boolean }>;
   supportedLanguages: Array<{ code: string; name: string }>;
+}
+
+export interface ProductTruthItem {
+  id: string;
+  category: string;
+  statement: string;
+  verificationStatus: 'verified_live' | 'approved_demo' | 'planned' | 'unknown';
+  proofAssetId?: string;
+  notes?: string;
+}
+
+export interface CreativeConcept {
+  id: string;
+  angleTitle: string;
+  angleType: 'problem_solution' | 'outcome_story' | 'product_proof' | 'educational' | 'direct_response';
+  hookText: string;
+  targetPain: string;
+  treatment: string;
+  suggestedDuration: number;
+  suggestedTemplateId: 'bold_kinetic' | 'guided_product_story' | 'app_showcase';
+  sceneOutline: Array<{
+    sceneNumber: number;
+    role: string;
+    summary: string;
+  }>;
+  voiceStyle: string;
+  riskNotes: string;
+  creativeRationale: string;
+}
+
+export interface CreativeSuggestion {
+  category: 'hook' | 'headline' | 'narration' | 'pacing' | 'motion' | 'claims' | 'cta';
+  severity: 'high' | 'medium' | 'low' | 'info';
+  targetSceneId: string;
+  currentText: string;
+  proposedText: string;
+  rationale: string;
+}
+
+export interface CreativeAudit {
+  hookScore: number;
+  benefitsScore: number;
+  factsScore: number;
+  brandScore: number;
+  pacingScore: number;
+  mobileLegibilityScore: number;
+  languageScore: number;
+  overallScore: number;
+  summary: string;
+  suggestions: CreativeSuggestion[];
+  auditedAt?: string;
+  model?: string;
+}
+
+export interface CreativeProviderStatus {
+  configured: boolean;
+  provider: string;
+  models: Array<{ id: string; name: string; defaultFor?: string }>;
+  activeModel: string;
+  budgetCapUsd: number;
+  offline: boolean;
+}
+
+export interface CreativeUsageReceipt {
+  id: string;
+  timestamp: string;
+  task: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  cached: boolean;
+  durationMs: number;
+}
+
+export interface CreativeUsage {
+  projectId: string;
+  budgetCapUsd: number;
+  totalSpentUsd: number;
+  totalCalls: number;
+  totalTokens: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  remainingBudgetUsd: number;
+  isOverBudget: boolean;
+  receipts: CreativeUsageReceipt[];
 }
 

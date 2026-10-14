@@ -38,12 +38,17 @@ async function testBrowserWorkTreeUI() {
   assert.equal(appTitle?.trim(), 'GROWTH STUDIO');
 
   const appVersion = await page.$eval('.header-app-version', el => el.textContent);
-  assert.ok(appVersion?.includes('OFFLINE VIDEO ENGINE'));
+  assert.ok(appVersion?.includes('CREATIVE DIRECTOR'), `Expected V0.03 version text, got: ${appVersion}`);
 
   const storageChip = await page.$('.storage-header-chip');
   assert.ok(storageChip, 'Storage chip rendered in top bar');
   const storageText = await page.$eval('.storage-header-chip', el => el.textContent);
   console.log(`✓ Top bar storage indicator verified: "${storageText.trim()}"`);
+
+  // Step 2b: Verify AI Spend button in header
+  const aiSpendBtn = await page.$('.header-actions-cluster button');
+  assert.ok(aiSpendBtn, 'AI Spend indicator button rendered in header');
+  console.log('✓ Header AI Spend / Offline indicator verified');
 
   // Step 3: Verify 7 Work-Tree Navigation Nodes
   console.log('3. Verifying 7-Stage Work-Tree Navigation...');
@@ -51,8 +56,8 @@ async function testBrowserWorkTreeUI() {
   assert.equal(navNodes.length, 7, `Expected 7 work-tree stages, got ${navNodes.length}`);
   console.log('✓ All 7 work-tree stages verified (Home, Template, Storyboard, Brand, Motion, Preview, Export)');
 
-  // Step 4: Step 1 (Project Home) - Starter cards
-  console.log('4. Checking starter cards on Project Home...');
+  // Step 4: Step 1 (Project Home) - Starter cards and AI Creative Director button
+  console.log('4. Checking starter cards and AI Creative Director button on Project Home...');
   await page.waitForSelector('.starter-choice-card', { timeout: 8000 });
   const starterCards = await page.$$('.starter-choice-card');
   assert.ok(starterCards.length >= 4, `Expected at least 4 starter cards, got ${starterCards.length}`);
@@ -77,6 +82,16 @@ async function testBrowserWorkTreeUI() {
   const sceneItems = await page.$$('.scene-nav-card');
   assert.ok(sceneItems.length >= 2, `Expected at least 2 scenes in storyboard, got ${sceneItems.length}`);
   console.log(`✓ Storyboard rendered with ${sceneItems.length} scenes`);
+
+  // Verify AI Rewrite button exists in Storyboard
+  const aiRewriteBtn = await page.$('button[title*="Rewrite this specific scene"]');
+  assert.ok(aiRewriteBtn, 'AI Rewrite button rendered in scene editor');
+  console.log('✓ Single-scene AI Rewrite button verified');
+
+  // Verify Creative Review button exists in Storyboard
+  const reviewBtn = await page.$('button[title*="Creative Director Audit"]');
+  assert.ok(reviewBtn, 'Creative Review button rendered in Storyboard header');
+  console.log('✓ Creative Review button verified');
 
   // Test editing headline
   const headlineInput = await page.$('textarea.form-input');

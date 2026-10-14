@@ -1,4 +1,14 @@
-import { Project, PreflightReport, RenderJob, StarterTemplate, NarrationStatus } from './types';
+import {
+  Project,
+  PreflightReport,
+  RenderJob,
+  StarterTemplate,
+  NarrationStatus,
+  CreativeConcept,
+  CreativeAudit,
+  CreativeProviderStatus,
+  CreativeUsage
+} from './types';
 
 const API_BASE = '/api';
 
@@ -157,6 +167,106 @@ export async function fitScenesToAudio(
     body: JSON.stringify({ paddingSeconds })
   });
   if (!res.ok) throw new Error('Failed to fit scenes to audio');
+  return res.json();
+}
+
+export async function fetchCreativeStatus(): Promise<CreativeProviderStatus> {
+  const res = await fetch(`${API_BASE}/creative/provider-status`);
+  if (!res.ok) throw new Error('Failed to fetch creative provider status');
+  return res.json();
+}
+
+export async function generateCreativeConcepts(
+  projectId: string,
+  brief: any,
+  model?: string
+): Promise<{ success: boolean; concepts: CreativeConcept[]; project: Project; usage: any; durationMs: number }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/creative/concepts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ brief, model })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to generate creative concepts');
+  }
+  return res.json();
+}
+
+export async function compileCreativeStoryboard(
+  projectId: string,
+  conceptId: string,
+  model?: string
+): Promise<{ success: boolean; project: Project; usage: any }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/creative/storyboard`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conceptId, model })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to compile creative storyboard');
+  }
+  return res.json();
+}
+
+export async function rewriteCreativeScene(
+  projectId: string,
+  sceneId: string,
+  instruction: string,
+  model?: string,
+  force = false
+): Promise<{ success: boolean; scene: any; project: Project; usage: any }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/creative/scenes/${sceneId}/rewrite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instruction, model, force })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to rewrite scene');
+  }
+  return res.json();
+}
+
+export async function reviewCreativeProject(
+  projectId: string,
+  model?: string
+): Promise<{ success: boolean; audit: CreativeAudit; usage: any }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/creative/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to perform creative review');
+  }
+  return res.json();
+}
+
+export async function fetchCreativeHistory(projectId: string): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/creative/history`);
+  if (!res.ok) throw new Error('Failed to fetch creative history');
+  return res.json();
+}
+
+export async function fetchCreativeUsage(projectId: string): Promise<CreativeUsage> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/creative/usage`);
+  if (!res.ok) throw new Error('Failed to fetch creative usage');
+  return res.json();
+}
+
+export async function updateCreativeBudget(projectId: string, budgetCapUsd: number): Promise<{ success: boolean; usage: CreativeUsage }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/creative/budget`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ budgetCapUsd })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to update creative budget');
+  }
   return res.json();
 }
 

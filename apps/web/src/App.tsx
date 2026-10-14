@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Project } from './types';
+import { Project, CreativeProviderStatus } from './types';
 import {
   fetchProjects,
   fetchProject,
   createProject,
   saveProject,
-  checkHealth
+  checkHealth,
+  fetchCreativeStatus,
+  fetchCreativeUsage
 } from './api';
 import { WorkTreeNav, WorkTreeStep } from './components/WorkTreeNav';
 import { ProjectHomeStep } from './components/ProjectHomeStep';
@@ -15,7 +17,8 @@ import { BrandMediaStep } from './components/BrandMediaStep';
 import { MotionMockupsStep } from './components/MotionMockupsStep';
 import { PreviewStep } from './components/PreviewStep';
 import { ExportStep } from './components/ExportStep';
-import { HardDrive, Save, Film, Check } from 'lucide-react';
+import { AiUsageModal } from './components/AiUsageModal';
+import { HardDrive, Save, Film, Check, Sparkles } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [project, setProject] = useState<Project | null>(null);
@@ -24,8 +27,11 @@ export const App: React.FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<string>('Saved');
   const [storageLabel, setStorageLabel] = useState<string>('E:\\GrowthStudio (388 GB)');
+  const [creativeStatus, setCreativeStatus] = useState<CreativeProviderStatus | null>(null);
+  const [projectSpend, setProjectSpend] = useState<{ spent: number; cap: number } | null>(null);
+  const [isAiUsageModalOpen, setIsAiUsageModalOpen] = useState<boolean>(false);
 
-  // Load active project and storage status on startup
+  // Load active project, storage status, and creative status on startup
   const initProjects = useCallback(async () => {
     try {
       try {
@@ -35,10 +41,18 @@ export const App: React.FC = () => {
         }
       } catch (_) {}
 
+      try {
+        const cStat = await fetchCreativeStatus();
+        setCreativeStatus(cStat);
+      } catch (_) {}
+
       const list = await fetchProjects();
       if (list && list.length > 0) {
         const first = await fetchProject(list[0].id);
         setProject(first);
+        fetchCreativeUsage(first.project.id).then(u => {
+          setProjectSpend({ spent: u.totalSpentUsd, cap: u.budgetCapUsd });
+        }).catch(() => {});
       } else {
         // Fallback to initial neutral blank project
         const blank = await createProject({ name: 'My First Video', starter: 'guided_bangla' });
@@ -57,6 +71,9 @@ export const App: React.FC = () => {
     try {
       const proj = await fetchProject(id);
       setProject(proj);
+      fetchCreativeUsage(proj.project.id).then(u => {
+        setProjectSpend({ spent: u.totalSpentUsd, cap: u.budgetCapUsd });
+      }).catch(() => {});
       setCurrentStep('template');
       setCompletedSteps(prev => new Set([...prev, 'home']));
     } catch (e) {
@@ -115,7 +132,7 @@ export const App: React.FC = () => {
           <div className="brand-logo-icon">GS</div>
           <div>
             <div className="header-app-title">GROWTH STUDIO</div>
-            <div className="header-app-version">V0.01 • OFFLINE VIDEO ENGINE</div>
+            <div className="header-app-version">V0.03 • OPENAI CREATIVE DIRECTOR</div>
           </div>
         </div>
 
@@ -132,6 +149,25 @@ export const App: React.FC = () => {
             <HardDrive className="w-4 h-4 text-emerald-400" />
             <span>{storageLabel}</span>
           </div>
+
+          {project && (
+            <button
+              onClick={() => setIsAiUsageModalOpen(true)}
+              className="btn-header-save"
+              style={{
+                borderColor: creativeStatus?.configured ? 'rgba(245, 158, 11, 0.4)' : 'rgba(148, 163, 184, 0.3)',
+                color: creativeStatus?.configured ? '#FBBF24' : '#94A3B8'
+              }}
+              title="View AI Spend Receipts & Token Budget Cap"
+            >
+              <Sparkles className="w-4 h-4 mr-1 text-amber-400" />
+              <span>
+                {creativeStatus?.configured
+                  ? `AI Spend: $${projectSpend?.spent?.toFixed(2) || '0.00'} / $${projectSpend?.cap?.toFixed(2) || '1.00'}`
+                  : 'AI: Offline'}
+              </span>
+            </button>
+          )}
 
           <button
             onClick={handleSave}
@@ -243,6 +279,19 @@ export const App: React.FC = () => {
           )}
         </main>
       </div>
+
+      {project && (
+        <AiUsageModal
+          project={project}
+          isOpen={isAiUsageModalOpen}
+          onClose={() => {
+            setIsAiUsageModalOpen(false);
+            fetchCreativeUsage(project.project.id).then(u => {
+              setProjectSpend({ spent: u.totalSpentUsd, cap: u.budgetCapUsd });
+            }).catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 };

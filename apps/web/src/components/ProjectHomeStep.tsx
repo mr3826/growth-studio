@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Project, StarterTemplate } from '../types';
 import { fetchStarters, fetchProjects, createProject, deleteProject } from '../api';
-import { Plus, FolderOpen, Trash2, HardDrive, ShieldCheck, Sparkles, ArrowRight } from 'lucide-react';
+import { ConceptComparisonModal } from './ConceptComparisonModal';
+import { Plus, FolderOpen, Trash2, HardDrive, ShieldCheck, Sparkles, ArrowRight, Wand2 } from 'lucide-react';
 
 interface ProjectHomeStepProps {
   currentProject: Project | null;
@@ -22,6 +23,7 @@ export const ProjectHomeStep: React.FC<ProjectHomeStepProps> = ({
   const [isCreating, setIsCreating] = useState<boolean>(false);
   const [newProjectName, setNewProjectName] = useState<string>('');
   const [selectedStarterId, setSelectedStarterId] = useState<string>('guided_bangla');
+  const [isCreativeModalOpen, setIsCreativeModalOpen] = useState<boolean>(false);
 
   const refreshList = async () => {
     setIsLoading(true);
@@ -103,10 +105,25 @@ export const ProjectHomeStep: React.FC<ProjectHomeStepProps> = ({
               <span>Language: <strong>{currentProject.project.language}</strong></span>
             </div>
           </div>
-          <button onClick={onContinue} className="btn-primary continue-btn">
-            <span>Continue in Work Tree</span>
-            <ArrowRight className="w-4 h-4 ml-1" />
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => setIsCreativeModalOpen(true)}
+              className="btn-primary"
+              style={{
+                background: 'linear-gradient(135deg, #F59E0B 0%, #6366F1 100%)',
+                boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)',
+                borderColor: 'transparent'
+              }}
+              title="Open AI Creative Director to develop 3 concepts or storyboard"
+            >
+              <Sparkles className="w-4 h-4 mr-1.5" />
+              <span>AI Creative Director</span>
+            </button>
+            <button onClick={onContinue} className="btn-primary continue-btn">
+              <span>Continue in Work Tree</span>
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -210,6 +227,18 @@ export const ProjectHomeStep: React.FC<ProjectHomeStepProps> = ({
           )}
         </div>
       </div>
+
+      {currentProject && (
+        <ConceptComparisonModal
+          project={currentProject}
+          isOpen={isCreativeModalOpen}
+          onClose={() => setIsCreativeModalOpen(false)}
+          onStoryboardCompiled={(updated) => {
+            onProjectCreated(updated);
+            setIsCreativeModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

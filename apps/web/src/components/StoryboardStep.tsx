@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project } from '../types';
+import { Project, CreativeSuggestion, CreativeAudit } from '../types';
 import {
   Plus,
   Trash2,
@@ -14,9 +14,19 @@ import {
   Mic,
   Play,
   RefreshCw,
-  CheckCircle2
+  CheckCircle2,
+  Award,
+  Lock,
+  Unlock,
+  Check,
+  FileCheck,
+  Wand2,
+  AlertCircle
 } from 'lucide-react';
 import { generateNarration, fitScenesToAudio } from '../api';
+import { CreativeReviewModal } from './CreativeReviewModal';
+import { SceneRewriteModal } from './SceneRewriteModal';
+import { ConceptComparisonModal } from './ConceptComparisonModal';
 
 interface StoryboardStepProps {
   project: Project;
@@ -36,8 +46,14 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   const [isGeneratingAll, setIsGeneratingAll] = useState<boolean>(false);
   const [isFittingAll, setIsFittingAll] = useState<boolean>(false);
 
+  // Creative Director Modals
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState<boolean>(false);
+  const [rewriteSceneId, setRewriteSceneId] = useState<string | null>(null);
+  const [isConceptModalOpen, setIsConceptModalOpen] = useState<boolean>(false);
+
   const scenes = project.scenes || [];
   const totalDuration = scenes.reduce((acc, s) => acc + (Number(s.durationSeconds) || 4), 0);
+  const approvedCount = scenes.filter(s => s.isApproved || s.approvalStatus === 'approved' || s.approvalStatus === 'locked').length;
 
   const handleUpdateScene = (index: number, updates: any) => {
     const newScenes = [...scenes];
@@ -169,16 +185,66 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
 
   return (
     <div className="step-container storyboard-step-view">
-      <div className="step-header flex-between">
+      <div className="step-header flex-between" style={{ alignItems: 'flex-start' }}>
         <div>
           <h2 className="step-title">Step 3: Storyboard, Chapters & Typography</h2>
           <p className="step-subtitle">
             Configure narrative scenes, Bengali/English headlines, highlighted words, and durations.
           </p>
         </div>
-        <div className="total-duration-badge">
-          <Clock className="w-4 h-4 text-amber-400 mr-1" />
-          <span>Total Timeline: <strong>{totalDuration.toFixed(1)}s</strong> ({scenes.length} scenes)</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={() => setIsConceptModalOpen(true)}
+            className="btn btn-secondary btn-sm"
+            style={{
+              borderColor: 'rgba(99, 102, 241, 0.4)',
+              color: '#A5B4FC'
+            }}
+            title="Open AI Creative Director to view brief, truth profile, or 3 concepts"
+          >
+            <Sparkles size={13} color="#F59E0B" />
+            <span>AI Concepts & Brief</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsReviewModalOpen(true)}
+            className="btn btn-secondary btn-sm"
+            style={{
+              borderColor: project.creative?.creativeAudit ? 'rgba(52, 211, 153, 0.4)' : 'rgba(168, 85, 247, 0.4)',
+              color: project.creative?.creativeAudit ? '#6EE7B7' : '#D8B4FE'
+            }}
+            title="Open Creative Director Audit Report"
+          >
+            <Award size={13} />
+            <span>
+              {project.creative?.creativeAudit
+                ? `Review Audit (${project.creative.creativeAudit.overallScore}/10)`
+                : 'Creative Review'}
+            </span>
+          </button>
+
+          <div
+            className="badge-chip"
+            style={{
+              background: approvedCount === scenes.length ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.12)',
+              color: approvedCount === scenes.length ? '#34D399' : '#FBBF24',
+              borderColor: approvedCount === scenes.length ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.25)',
+              padding: '4px 10px',
+              fontSize: 11,
+              fontWeight: 600
+            }}
+          >
+            {approvedCount === scenes.length ? <Check size={12} /> : <Clock size={12} />}
+            <span>Approved: {approvedCount}/{scenes.length}</span>
+          </div>
+
+          <div className="total-duration-badge">
+            <Clock className="w-4 h-4 text-amber-400 mr-1" />
+            <span>Total: <strong>{totalDuration.toFixed(1)}s</strong></span>
+          </div>
         </div>
       </div>
 
@@ -217,6 +283,9 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
           <div className="scenes-items-stack">
             {scenes.map((s, idx) => {
               const isSelected = selectedSceneIndex === idx;
+              const isLocked = s.approvalStatus === 'locked';
+              const isApproved = s.isApproved || s.approvalStatus === 'approved';
+
               return (
                 <div
                   key={s.id || idx}
@@ -224,7 +293,25 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                   className={`scene-nav-card ${isSelected ? 'selected' : ''}`}
                 >
                   <div className="scene-nav-top">
-                    <span className="scene-nav-num">#{idx + 1}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      {isLocked ? (
+                        <Lock size={11} color="#F59E0B" title="Locked" />
+                      ) : isApproved ? (
+                        <CheckCircle2 size={11} color="#10B981" title="Approved" />
+                      ) : (
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            background: '#64748B',
+                            display: 'inline-block'
+                          }}
+                          title="Draft"
+                        />
+                      )}
+                      <span className="scene-nav-num">#{idx + 1}</span>
+                    </div>
                     <span className="scene-nav-kind">{s.kind}</span>
                     <span className="scene-nav-dur">{s.durationSeconds}s</span>
                   </div>
@@ -247,9 +334,70 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
         {currentScene && (
           <div className="storyboard-editor-panel">
             <div className="editor-top-actions">
-              <div className="scene-index-badge">
-                Editing Scene #{selectedSceneIndex + 1} ({currentScene.id})
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="scene-index-badge">
+                  Editing Scene #{selectedSceneIndex + 1} ({currentScene.id})
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setRewriteSceneId(currentScene.id)}
+                  className="btn btn-secondary btn-xs"
+                  style={{
+                    color: '#F59E0B',
+                    borderColor: 'rgba(245, 158, 11, 0.4)',
+                    background: 'rgba(245, 158, 11, 0.08)'
+                  }}
+                  title="Rewrite this specific scene using OpenAI Creative Director"
+                >
+                  <Sparkles size={12} />
+                  <span>Rewrite with AI</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const curStatus = currentScene.approvalStatus || (currentScene.isApproved ? 'approved' : 'draft');
+                    const nextStatus = curStatus === 'draft' ? 'approved' : curStatus === 'approved' ? 'locked' : 'draft';
+                    handleUpdateScene(selectedSceneIndex, {
+                      approvalStatus: nextStatus,
+                      isApproved: nextStatus === 'approved' || nextStatus === 'locked'
+                    });
+                  }}
+                  className="btn btn-secondary btn-xs"
+                  style={{
+                    color: currentScene.approvalStatus === 'locked'
+                      ? '#F59E0B'
+                      : (currentScene.isApproved || currentScene.approvalStatus === 'approved')
+                      ? '#10B981'
+                      : '#94A3B8',
+                    borderColor: currentScene.approvalStatus === 'locked'
+                      ? 'rgba(245, 158, 11, 0.4)'
+                      : (currentScene.isApproved || currentScene.approvalStatus === 'approved')
+                      ? 'rgba(16, 185, 129, 0.4)'
+                      : 'rgba(148, 163, 184, 0.3)'
+                  }}
+                  title="Click to cycle status: Draft -> Approved -> Locked"
+                >
+                  {currentScene.approvalStatus === 'locked' ? (
+                    <>
+                      <Lock size={12} />
+                      <span>Locked</span>
+                    </>
+                  ) : (currentScene.isApproved || currentScene.approvalStatus === 'approved') ? (
+                    <>
+                      <CheckCircle2 size={12} />
+                      <span>Approved</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clock size={12} />
+                      <span>Draft</span>
+                    </>
+                  )}
+                </button>
               </div>
+
               <div className="scene-btn-group">
                 <button
                   onClick={() => handleMoveScene(selectedSceneIndex, 'up')}
@@ -472,6 +620,19 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                 </div>
               </div>
 
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label className="form-label" style={{ fontSize: 11, color: '#94A3B8' }}>
+                  Pronunciation & Delivery Notes (Phonetic accents, brand spelling, pauses)
+                </label>
+                <input
+                  type="text"
+                  className="form-input text-xs"
+                  value={currentScene.pronunciationNotes || ''}
+                  placeholder="e.g. Pronounce brand clearly, 0.4s pause before reveal"
+                  onChange={(e) => handleUpdateScene(selectedSceneIndex, { pronunciationNotes: e.target.value })}
+                />
+              </div>
+
               {(currentScene.kind === 'cta' || currentScene.ctaLabel) && (
                 <div className="form-row-2">
                   <div className="form-group">
@@ -511,6 +672,56 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
           <ArrowRight className="w-4 h-4 ml-1" />
         </button>
       </div>
+
+      {/* Creative Review Modal */}
+      <CreativeReviewModal
+        project={project}
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+        onApplySuggestion={(sugg) => {
+          const targetIdx = scenes.findIndex(s => s.id === sugg.targetSceneId);
+          if (targetIdx !== -1) {
+            handleUpdateScene(targetIdx, {
+              headline: sugg.proposedText,
+              narrationText: sugg.proposedText,
+              approvalStatus: 'draft',
+              isApproved: false
+            });
+          }
+        }}
+        onAuditUpdated={(updatedAudit) => {
+          onChange({
+            ...project,
+            creative: {
+              ...project.creative,
+              creativeAudit: updatedAudit
+            }
+          });
+        }}
+      />
+
+      {/* Selective Single Scene AI Rewrite Modal */}
+      <SceneRewriteModal
+        project={project}
+        sceneId={rewriteSceneId || ''}
+        isOpen={Boolean(rewriteSceneId)}
+        onClose={() => setRewriteSceneId(null)}
+        onSceneRewritten={(updatedProj) => {
+          onChange(updatedProj);
+          setRewriteSceneId(null);
+        }}
+      />
+
+      {/* AI Concepts & Brief Modal */}
+      <ConceptComparisonModal
+        project={project}
+        isOpen={isConceptModalOpen}
+        onClose={() => setIsConceptModalOpen(false)}
+        onStoryboardCompiled={(updatedProj) => {
+          onChange(updatedProj);
+          setIsConceptModalOpen(false);
+        }}
+      />
     </div>
   );
 };
