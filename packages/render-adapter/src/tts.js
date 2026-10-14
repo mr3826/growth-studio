@@ -60,14 +60,9 @@ export async function synthesizeSpeechGemini({
     throw new Error('TTS error: Speech text cannot be empty');
   }
 
-  const apiKey = process.env.CONTENT_STUDIO_GEMINI;
-  if (!apiKey) {
-    throw new Error('Gemini TTS unavailable: Environment variable CONTENT_STUDIO_GEMINI is not set');
-  }
-
   const cleanText = text.trim();
 
-  // Check file cache if cacheDir provided
+  // Check file cache if cacheDir provided (allows offline reuse without API key)
   if (cacheDir && fs.existsSync(cacheDir)) {
     const cacheKey = Buffer.from(`${model}_${voice}_${cleanText}`).toString('base64url').slice(0, 48);
     const cachedWav = path.join(cacheDir, `tts_${cacheKey}.wav`);
@@ -82,6 +77,11 @@ export async function synthesizeSpeechGemini({
         fromCache: true
       };
     }
+  }
+
+  const apiKey = process.env.CONTENT_STUDIO_GEMINI;
+  if (!apiKey) {
+    throw new Error('Gemini TTS unavailable: Environment variable CONTENT_STUDIO_GEMINI is not set');
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;

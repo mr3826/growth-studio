@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
 import { buildServer } from '../apps/local-server/src/index.js';
-import { measureAudioVolume, detectSilence } from '../packages/render-adapter/src/index.js';
+import { measureAudioVolume, detectSilence, synthesizeSpeechGemini } from '../packages/render-adapter/src/index.js';
 
 async function runAudioTests() {
   console.log('--- Testing Audio & TTS Narration Pipeline ---');
@@ -112,6 +112,24 @@ async function runAudioTests() {
   const fitScene = fitData.scenes.find(s => s.id === scene0.id);
   assert.ok(fitScene.durationSeconds >= updatedScene.narrationDurationSeconds + 0.9);
   console.log(`✓ fit-scenes adjusted scene duration to ${fitScene.durationSeconds}s`);
+
+  // Test 6: Offline Cache Hit without API Key (Regression Test)
+  console.log('\n[6/6] Testing synthesizeSpeechGemini offline cache hit (process.env.CONTENT_STUDIO_GEMINI = "")...');
+  const originalKey = process.env.CONTENT_STUDIO_GEMINI;
+  process.env.CONTENT_STUDIO_GEMINI = '';
+  try {
+    const offlineResult = await synthesizeSpeechGemini({
+      text: scene0.narrationText,
+      voice: 'Puck',
+      model: 'gemini-2.5-flash-preview-tts',
+      cacheDir: path.join(storageRoot, 'renders', 'tts_cache')
+    });
+    assert.equal(offlineResult.fromCache, true);
+    assert.ok(offlineResult.wavBuffer.length > 1000);
+    console.log(`✓ Offline cache hit succeeded without API key (${offlineResult.wavBuffer.length} bytes, duration: ${offlineResult.durationSeconds.toFixed(2)}s)`);
+  } finally {
+    process.env.CONTENT_STUDIO_GEMINI = originalKey;
+  }
 
   // Clean up test project
   await server.inject({
