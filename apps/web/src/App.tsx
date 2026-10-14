@@ -1,91 +1,87 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Project, PreflightReport } from './types';
+import { Project } from './types';
 import {
   fetchProjects,
   fetchProject,
   createProject,
   saveProject,
-  fetchPreflight
+  checkHealth
 } from './api';
-import { Header } from './components/Header';
-import { PreviewPlayer } from './components/PreviewPlayer';
-import { QuickCreateTab } from './components/QuickCreateTab';
-import { BrandKitTab } from './components/BrandKitTab';
-import { ScenesTab } from './components/ScenesTab';
-import { AssetsTab } from './components/AssetsTab';
-import { AudioTab } from './components/AudioTab';
-import { ExportTab } from './components/ExportTab';
-import { PreflightModal } from './components/PreflightModal';
-import { ExportModal } from './components/ExportModal';
-import { Zap, Palette, Clapperboard, FolderOpen, Music, Settings } from 'lucide-react';
+import { WorkTreeNav, WorkTreeStep } from './components/WorkTreeNav';
+import { ProjectHomeStep } from './components/ProjectHomeStep';
+import { TemplateStep } from './components/TemplateStep';
+import { StoryboardStep } from './components/StoryboardStep';
+import { BrandMediaStep } from './components/BrandMediaStep';
+import { MotionMockupsStep } from './components/MotionMockupsStep';
+import { PreviewStep } from './components/PreviewStep';
+import { ExportStep } from './components/ExportStep';
+import { HardDrive, Save, Film, Check } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [project, setProject] = useState<Project | null>(null);
-  const [projectsList, setProjectsList] = useState<Array<{ id: string; name: string }>>([]);
-  const [activeTab, setActiveTab] = useState<'quick' | 'brand' | 'scenes' | 'assets' | 'audio' | 'export'>('quick');
-  const [targetId, setTargetId] = useState<'portrait' | 'landscape'>('portrait');
-  const [refreshTrigger, setRefreshTrigger] = useState<number>(Date.now());
+  const [currentStep, setCurrentStep] = useState<WorkTreeStep>('home');
+  const [completedSteps, setCompletedSteps] = useState<Set<WorkTreeStep>>(new Set(['home']));
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<string>('Saved');
+  const [storageLabel, setStorageLabel] = useState<string>('E:\\GrowthStudio (388 GB)');
 
-  const [showPreflight, setShowPreflight] = useState<boolean>(false);
-  const [preflightReport, setPreflightReport] = useState<PreflightReport | null>(null);
-  const [isPreflightLoading, setIsPreflightLoading] = useState<boolean>(false);
-
-  const [showExportModal, setShowExportModal] = useState<boolean>(false);
-
-  // Load project list on start
-  const refreshProjectsList = useCallback(async () => {
+  // Load active project and storage status on startup
+  const initProjects = useCallback(async () => {
     try {
+      try {
+        const health = await checkHealth();
+        if (health.storage) {
+          setStorageLabel(`${health.storage.root} (${health.storage.freeGB} GB)`);
+        }
+      } catch (_) {}
+
       const list = await fetchProjects();
-      setProjectsList(list);
-      return list;
+      if (list && list.length > 0) {
+        const first = await fetchProject(list[0].id);
+        setProject(first);
+      } else {
+        // Fallback to initial neutral blank project
+        const blank = await createProject({ name: 'My First Video', starter: 'guided_bangla' });
+        setProject(blank);
+      }
     } catch (e) {
-      console.error('Failed to load project list:', e);
-      return [];
-    }
-  }, []);
-
-  const loadProjectById = useCallback(async (id: string) => {
-    try {
-      const proj = await fetchProject(id);
-      setProject(proj);
-      setRefreshTrigger(Date.now());
-      setSaveStatus('Saved');
-    } catch (e) {
-      console.error(`Failed to load project ${id}:`, e);
+      console.error('Failed to load initial projects:', e);
     }
   }, []);
 
   useEffect(() => {
-    refreshProjectsList().then(async (list) => {
-      if (list.length > 0) {
-        await loadProjectById(list[0].id);
-      } else {
-        // Create initial EasyModerator project
-        const newProj = await createProject({ preset: 'easymoderator' });
-        setProject(newProj);
-        await refreshProjectsList();
-      }
-    });
-  }, [refreshProjectsList, loadProjectById]);
+    initProjects();
+  }, [initProjects]);
 
-  // Handle project modifications
+  const handleSelectProject = async (id: string) => {
+    try {
+      const proj = await fetchProject(id);
+      setProject(proj);
+      setCurrentStep('template');
+      setCompletedSteps(prev => new Set([...prev, 'home']));
+    } catch (e) {
+      console.error(`Failed to load project ${id}:`, e);
+    }
+  };
+
+  const handleProjectCreated = (newProj: Project) => {
+    setProject(newProj);
+    setCurrentStep('template');
+    setCompletedSteps(prev => new Set([...prev, 'home', 'template']));
+  };
+
   const handleProjectChange = (updated: Project) => {
     setProject(updated);
     setSaveStatus('Unsaved edits...');
   };
 
-  // Save project
-  const handleSaveProject = async () => {
+  const handleSave = async () => {
     if (!project) return;
     setIsSaving(true);
-    setSaveStatus('Saving...');
+    setSaveStatus('Saving to disk...');
     try {
       await saveProject(project.project.id, project);
-      setSaveStatus('Saved to disk ✓');
-      setRefreshTrigger(Date.now());
-      await refreshProjectsList();
+      setSaveStatus('Saved ✓');
     } catch (err: any) {
       setSaveStatus(`Save error: ${err.message}`);
     } finally {
@@ -93,234 +89,160 @@ export const App: React.FC = () => {
     }
   };
 
-  // Debounced auto-save on project changes
+  // Debounced auto-save
   useEffect(() => {
     if (!project) return;
     const timer = setTimeout(() => {
-      handleSaveProject();
-    }, 1500);
+      handleSave();
+    }, 1200);
     return () => clearTimeout(timer);
-  }, [project?.creative, project?.brand, project?.scenes, project?.audio]);
+  }, [project?.creative, project?.brand, project?.scenes, project?.targets, project?.template]);
 
-  // Create new blank project
-  const handleNewProject = async () => {
-    const name = prompt('Enter a name for the new project:', 'My Kinetic Promo');
-    if (!name) return;
-    const newProj = await createProject({ name });
-    await refreshProjectsList();
-    setProject(newProj);
-    setRefreshTrigger(Date.now());
+  const markStepDone = (step: WorkTreeStep) => {
+    setCompletedSteps(prev => new Set([...prev, step]));
   };
 
-  // Load preset project (e.g. EasyModerator)
-  const handleLoadPreset = async (preset: string) => {
-    const newProj = await createProject({ preset });
-    await refreshProjectsList();
-    setProject(newProj);
-    setRefreshTrigger(Date.now());
+  const navigateTo = (step: WorkTreeStep) => {
+    setCurrentStep(step);
+    markStepDone(currentStep);
   };
-
-  // Preflight check
-  const handleOpenPreflight = async () => {
-    if (!project) return;
-    setShowPreflight(true);
-    setIsPreflightLoading(true);
-    try {
-      // First ensure project is saved
-      await saveProject(project.project.id, project);
-      const rep = await fetchPreflight(project.project.id);
-      setPreflightReport(rep);
-    } catch (e: any) {
-      setPreflightReport({
-        passed: false,
-        errors: [e.message || 'Error running preflight'],
-        warnings: [],
-        totalDuration: 0
-      });
-    } finally {
-      setIsPreflightLoading(false);
-    }
-  };
-
-  // Export JSON
-  const handleExportJson = () => {
-    if (!project) return;
-    const jsonStr = JSON.stringify(project, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${project.project.id}-project.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Import JSON
-  const handleImportJson = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const parsed = JSON.parse(e.target?.result as string);
-        if (!parsed.schemaVersion || !parsed.project || !parsed.scenes) {
-          throw new Error('Invalid kinetic studio project schema');
-        }
-        const created = await createProject({ name: parsed.project.name || 'Imported Promo' });
-        parsed.project.id = created.project.id;
-        await saveProject(created.project.id, parsed);
-        setProject(parsed);
-        await refreshProjectsList();
-        setRefreshTrigger(Date.now());
-        alert('Project JSON imported successfully!');
-      } catch (err: any) {
-        alert(`Failed to import JSON: ${err.message}`);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  if (!project) {
-    return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-        Loading Kinetic Studio...
-      </div>
-    );
-  }
 
   return (
-    <>
-      <Header
-        project={project}
-        projectsList={projectsList}
-        onSelectProject={loadProjectById}
-        onNewProject={handleNewProject}
-        onLoadPreset={handleLoadPreset}
-        onSaveProject={handleSaveProject}
-        onOpenPreflight={handleOpenPreflight}
-        onOpenExport={() => setShowExportModal(true)}
-        onExportJson={handleExportJson}
-        onImportJson={handleImportJson}
-        isSaving={isSaving}
-      />
+    <div className="growth-studio-app-root">
+      {/* Top Application Header */}
+      <header className="app-main-header">
+        <div className="header-brand-cluster">
+          <div className="brand-logo-icon">GS</div>
+          <div>
+            <div className="header-app-title">GROWTH STUDIO</div>
+            <div className="header-app-version">V0.01 • OFFLINE VIDEO ENGINE</div>
+          </div>
+        </div>
 
-      <div className="app-main">
-        {/* Left Navigation */}
-        <nav className="app-sidebar">
-          <div className="nav-group">
-            <button
-              className={`nav-tab-btn ${activeTab === 'quick' ? 'active' : ''}`}
-              onClick={() => setActiveTab('quick')}
-            >
-              <Zap size={16} /> Quick Create
-            </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'brand' ? 'active' : ''}`}
-              onClick={() => setActiveTab('brand')}
-            >
-              <Palette size={16} /> Brand & Palette
-            </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'scenes' ? 'active' : ''}`}
-              onClick={() => setActiveTab('scenes')}
-            >
-              <Clapperboard size={16} /> Scenes & Motion
-            </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'assets' ? 'active' : ''}`}
-              onClick={() => setActiveTab('assets')}
-            >
-              <FolderOpen size={16} /> Assets Manager
-            </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'audio' ? 'active' : ''}`}
-              onClick={() => setActiveTab('audio')}
-            >
-              <Music size={16} /> Audio & Music
-            </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'export' ? 'active' : ''}`}
-              onClick={() => setActiveTab('export')}
-            >
-              <Settings size={16} /> Export Settings
-            </button>
+        {project && (
+          <div className="header-project-pill">
+            <span className="pill-dot"></span>
+            <strong>{project.project.name}</strong>
+            <span className="pill-template">({project.template.id})</span>
+          </div>
+        )}
+
+        <div className="header-actions-cluster">
+          <div className="storage-header-chip" title="Storage volume on local system">
+            <HardDrive className="w-4 h-4 text-emerald-400" />
+            <span>{storageLabel}</span>
           </div>
 
-          <div className="system-status-badge">
-            <div className="status-row">
-              <span>Status:</span>
-              <span style={{ color: '#F4C35E', fontWeight: 600 }}>{saveStatus}</span>
-            </div>
-            <div className="status-row">
-              <span>Offline Core:</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="status-dot"></span>
-                <span style={{ color: '#10b981', fontWeight: 600 }}>Ready</span>
-              </div>
-            </div>
-          </div>
-        </nav>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="btn-header-save"
+            title="Save changes to project.json"
+          >
+            <Save className="w-4 h-4 mr-1.5" />
+            <span>{isSaving ? 'Saving...' : saveStatus}</span>
+          </button>
 
-        {/* Center Canvas Preview */}
-        <PreviewPlayer
-          projectId={project.project.id}
-          targetId={targetId}
-          onChangeTarget={setTargetId}
-          refreshTrigger={refreshTrigger}
+          {project && (
+            <button
+              onClick={() => setCurrentStep('export')}
+              className="btn-header-export"
+              title="Jump to offline video export"
+            >
+              <Film className="w-4 h-4 mr-1.5" />
+              <span>Export Video</span>
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Main Workspace with Work Tree Navigation and Step Canvas */}
+      <div className="app-workspace-body">
+        <WorkTreeNav
+          currentStep={currentStep}
+          onSelectStep={(step) => navigateTo(step)}
+          completedSteps={completedSteps}
+          projectName={project?.project.name}
         />
 
-        {/* Right Inspector Panel */}
-        <aside className="app-inspector">
-          <div className="inspector-header">
-            <span>
-              {activeTab === 'quick' && 'Quick Create'}
-              {activeTab === 'brand' && 'Brand Kit'}
-              {activeTab === 'scenes' && 'Scenes & Animation'}
-              {activeTab === 'assets' && 'Imported Assets'}
-              {activeTab === 'audio' && 'Audio & Mixing'}
-              {activeTab === 'export' && 'Export Configuration'}
-            </span>
-          </div>
+        <main className="app-step-content-area" role="main">
+          {currentStep === 'home' && (
+            <ProjectHomeStep
+              currentProject={project}
+              onSelectProject={handleSelectProject}
+              onProjectCreated={handleProjectCreated}
+              onContinue={() => navigateTo('template')}
+            />
+          )}
 
-          {activeTab === 'quick' && (
-            <QuickCreateTab project={project} onChange={handleProjectChange} />
-          )}
-          {activeTab === 'brand' && (
-            <BrandKitTab project={project} onChange={handleProjectChange} />
-          )}
-          {activeTab === 'scenes' && (
-            <ScenesTab project={project} onChange={handleProjectChange} />
-          )}
-          {activeTab === 'assets' && (
-            <AssetsTab
+          {currentStep === 'template' && project && (
+            <TemplateStep
               project={project}
               onChange={handleProjectChange}
-              onRefreshPreview={() => setRefreshTrigger(Date.now())}
+              onBack={() => navigateTo('home')}
+              onNext={() => {
+                markStepDone('template');
+                navigateTo('storyboard');
+              }}
             />
           )}
-          {activeTab === 'audio' && (
-            <AudioTab project={project} onChange={handleProjectChange} />
-          )}
-          {activeTab === 'export' && (
-            <ExportTab
+
+          {currentStep === 'storyboard' && project && (
+            <StoryboardStep
               project={project}
               onChange={handleProjectChange}
-              onOpenExportModal={() => setShowExportModal(true)}
+              onBack={() => navigateTo('template')}
+              onNext={() => {
+                markStepDone('storyboard');
+                navigateTo('brand');
+              }}
             />
           )}
-        </aside>
+
+          {currentStep === 'brand' && project && (
+            <BrandMediaStep
+              project={project}
+              onChange={handleProjectChange}
+              onBack={() => navigateTo('storyboard')}
+              onNext={() => {
+                markStepDone('brand');
+                navigateTo('motion');
+              }}
+            />
+          )}
+
+          {currentStep === 'motion' && project && (
+            <MotionMockupsStep
+              project={project}
+              onChange={handleProjectChange}
+              onBack={() => navigateTo('brand')}
+              onNext={() => {
+                markStepDone('motion');
+                navigateTo('preview');
+              }}
+            />
+          )}
+
+          {currentStep === 'preview' && project && (
+            <PreviewStep
+              project={project}
+              onBack={() => navigateTo('motion')}
+              onProceedToExport={() => {
+                markStepDone('preview');
+                navigateTo('export');
+              }}
+            />
+          )}
+
+          {currentStep === 'export' && project && (
+            <ExportStep
+              project={project}
+              onBack={() => navigateTo('preview')}
+              onGoHome={() => navigateTo('home')}
+            />
+          )}
+        </main>
       </div>
-
-      <PreflightModal
-        isOpen={showPreflight}
-        onClose={() => setShowPreflight(false)}
-        report={preflightReport}
-        isLoading={isPreflightLoading}
-      />
-
-      <ExportModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        projectId={project.project.id}
-      />
-    </>
+    </div>
   );
 };

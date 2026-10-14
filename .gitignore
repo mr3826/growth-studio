@@ -3,3 +3,6 @@ dist/
 .DS_Store
 *.log
 .vscode/
+data/exports/*.mp4
+!data/exports/test-render-*.mp4
+data/projects/
