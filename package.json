@@ -13,6 +13,8 @@
     "dev": "node scripts/dev.js",
     "build": "npm --workspace=apps/web run build",
     "start": "npm --workspace=apps/local-server run start",
-    "test": "node --test --test-concurrency=1 tests/**/*.test.js"
+    "test": "node --test --test-concurrency=1 tests/**/*.test.js",
+    "test:matrix": "node tests/matrix.test.js",
+    "test:creative": "node tests/live-creative.standalone.js"
   }
 }
