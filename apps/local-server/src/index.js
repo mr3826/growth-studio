@@ -39,6 +39,8 @@ import {
   synthesizeSpeechGemini
 } from '@kinetic-studio/render-adapter';
 
+import { CreativeOrchestrator } from './creative/creative-orchestrator.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -59,6 +61,7 @@ const WEB_DIST_DIR = path.join(ROOT_DIR, 'apps/web/dist');
 const renderJobs = new Map();
 const abortControllers = new Map();
 const jobEmitter = new EventEmitter();
+const creativeOrchestrator = new CreativeOrchestrator({ storagePaths });
 
 export async function buildServer() {
   const fastify = Fastify({
@@ -582,6 +585,143 @@ export async function buildServer() {
       success: true,
       scenes: project.scenes
     };
+  });
+
+  // Creative Director: Provider Status & Active Models
+  fastify.get('/api/creative/provider-status', async () => {
+    return creativeOrchestrator.getStatus();
+  });
+
+  // Creative Director: Develop 3 distinct advertising concepts
+  fastify.post('/api/projects/:id/creative/concepts', async (request, reply) => {
+    const { id } = request.params;
+    const safeId = path.basename(id);
+    const { brief = {}, model } = request.body || {};
+
+    try {
+      const result = await creativeOrchestrator.developConcepts(safeId, brief, { model });
+      const updatedProject = JSON.parse(fs.readFileSync(path.join(PROJECTS_DIR, safeId, 'project.json'), 'utf8'));
+      return {
+        success: true,
+        concepts: result.concepts,
+        modelUsed: result.modelUsed,
+        usage: result.usage,
+        durationMs: result.durationMs,
+        project: updatedProject
+      };
+    } catch (err) {
+      const isBudget = err.message?.includes('AI spend limit reached');
+      return reply.code(isBudget ? 429 : 500).send({
+        error: err.message,
+        isBudgetError: isBudget
+      });
+    }
+  });
+
+  // Creative Director: Compile storyboard from approved concept
+  fastify.post('/api/projects/:id/creative/storyboard', async (request, reply) => {
+    const { id } = request.params;
+    const safeId = path.basename(id);
+    const { conceptId, model } = request.body || {};
+
+    try {
+      const result = await creativeOrchestrator.compileStoryboard(safeId, conceptId, { model });
+      return {
+        success: true,
+        project: result.project,
+        modelUsed: result.modelUsed,
+        usage: result.usage
+      };
+    } catch (err) {
+      const isNotFound = err.message?.includes('not found');
+      const isBudget = err.message?.includes('AI spend limit reached');
+      return reply.code(isNotFound ? 404 : (isBudget ? 429 : 500)).send({
+        error: err.message,
+        isBudgetError: isBudget
+      });
+    }
+  });
+
+  // Creative Director: Selective single-scene rewrite
+  fastify.post('/api/projects/:id/creative/scenes/:sceneId/rewrite', async (request, reply) => {
+    const { id, sceneId } = request.params;
+    const safeId = path.basename(id);
+    const { instruction, prompt, model, force = false } = request.body || {};
+    const effectiveInstruction = instruction || prompt;
+
+    if (!effectiveInstruction || !effectiveInstruction.trim()) {
+      return reply.code(400).send({ error: 'Revision instruction is required' });
+    }
+
+    try {
+      const result = await creativeOrchestrator.rewriteScene(safeId, sceneId, effectiveInstruction, { model, force });
+      return {
+        success: true,
+        scene: result.scene,
+        project: result.project,
+        modelUsed: result.modelUsed,
+        usage: result.usage
+      };
+    } catch (err) {
+      const isNotFound = err.message?.includes('not found');
+      const isLocked = err.message?.includes('marked approved/locked');
+      const isBudget = err.message?.includes('AI spend limit reached');
+      const code = isNotFound ? 404 : (isLocked ? 409 : (isBudget ? 429 : 500));
+      return reply.code(code).send({
+        error: err.message,
+        isBudgetError: isBudget
+      });
+    }
+  });
+
+  // Creative Director: Comprehensive project creative review
+  fastify.post('/api/projects/:id/creative/review', async (request, reply) => {
+    const { id } = request.params;
+    const safeId = path.basename(id);
+    const { model } = request.body || {};
+
+    try {
+      const result = await creativeOrchestrator.reviewProject(safeId, { model });
+      return {
+        success: true,
+        audit: result.audit,
+        modelUsed: result.modelUsed,
+        usage: result.usage
+      };
+    } catch (err) {
+      const isBudget = err.message?.includes('AI spend limit reached');
+      return reply.code(isBudget ? 429 : 500).send({
+        error: err.message,
+        isBudgetError: isBudget
+      });
+    }
+  });
+
+  // Creative Director: Revision history
+  fastify.get('/api/projects/:id/creative/history', async (request, reply) => {
+    const { id } = request.params;
+    const safeId = path.basename(id);
+    return creativeOrchestrator.getHistory(safeId);
+  });
+
+  // Creative Director: Token usage & spend receipts
+  fastify.get('/api/projects/:id/creative/usage', async (request, reply) => {
+    const { id } = request.params;
+    const safeId = path.basename(id);
+    return creativeOrchestrator.usageRecorder.getUsage(safeId);
+  });
+
+  // Creative Director: Update project budget cap
+  fastify.post('/api/projects/:id/creative/budget', async (request, reply) => {
+    const { id } = request.params;
+    const safeId = path.basename(id);
+    const { budgetCapUsd } = request.body || {};
+    try {
+      const updated = creativeOrchestrator.usageRecorder.setBudget(safeId, budgetCapUsd);
+      return { success: true, usage: updated };
+    } catch (err) {
+      return reply.code(400).send({ error: err.message });
+    }
   });
 
   // Run Preflight validation & storage check

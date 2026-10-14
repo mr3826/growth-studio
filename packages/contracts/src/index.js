@@ -1125,3 +1125,43 @@ export function migrateProjectAudio(project) {
 
   return project;
 }
+
+export function createTruthItem({
+  id = `claim-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  featureOrClaim = '',
+  status = 'verified_live',
+  evidenceSource = '',
+  isApproved = true,
+  notes = ''
+} = {}) {
+  return {
+    id,
+    featureOrClaim,
+    status, // 'verified_live' | 'approved_demo' | 'planned' | 'unknown'
+    evidenceSource,
+    isApproved,
+    notes
+  };
+}
+
+export function migrateProjectCreative(project) {
+  if (!project) return project;
+  project.creative = project.creative || {};
+  if (!Array.isArray(project.creative.productTruthProfile)) {
+    project.creative.productTruthProfile = [];
+  }
+  if (!Array.isArray(project.creative.concepts)) {
+    project.creative.concepts = [];
+  }
+  if (!Array.isArray(project.creative.benefits)) {
+    project.creative.benefits = project.creative.keyMessage ? [project.creative.keyMessage] : [];
+  }
+  if (!Array.isArray(project.creative.prohibitedTopics)) {
+    project.creative.prohibitedTopics = project.creative.prohibitedPhrases || [];
+  }
+  if (typeof project.creative.spendBudgetUsd !== 'number') {
+    project.creative.spendBudgetUsd = 1.00;
+  }
+  return project;
+}
+

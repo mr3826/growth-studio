@@ -193,7 +193,37 @@
             "label"
           ],
           "additionalProperties": false
-        }
+        },
+        "category": { "type": "string" },
+        "intendedPlatform": { "type": "string" },
+        "targetDuration": { "type": "number" },
+        "communicationGoal": { "type": "string" },
+        "funnelStage": { "type": "string" },
+        "problem": { "type": "string" },
+        "benefits": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "differentiation": { "type": "string" },
+        "tagline": { "type": "string" },
+        "prohibitedTopics": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scriptTone": { "type": "string" },
+        "productTruthProfile": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "concepts": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "selectedConceptId": { "type": "string" },
+        "conceptsGeneratedAt": { "type": "string" },
+        "conceptsModel": { "type": "string" },
+        "creativeAudit": { "type": "object" },
+        "spendBudgetUsd": { "type": "number" }
       },
       "required": [
         "objective",
@@ -878,7 +908,20 @@
             },
             "required": [],
             "additionalProperties": false
-          }
+          },
+          "sceneRole": { "type": "string" },
+          "approvalStatus": { "type": "string" },
+          "isApproved": { "type": "boolean" },
+          "pronunciationNotes": { "type": "string" },
+          "claims": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "cameraPreset": { "type": "string" },
+          "provenance": { "type": "object" },
+          "onscreen": { "type": "object" },
+          "narration": { "type": "object" },
+          "visuals": { "type": "object" }
         },
         "required": [
           "id",
