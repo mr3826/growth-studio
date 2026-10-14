@@ -1,0 +1,12 @@
+{
+  "id": "bold_kinetic",
+  "version": "1.0.0",
+  "name": "Bold Kinetic",
+  "description": "High-impact kinetic typography with giant staggered words, vibrant highlights, and strong promotional punch.",
+  "sceneKinds": ["kinetic_text", "problem", "solution", "ui_demo", "feature", "cta"],
+  "supportedTargets": ["portrait", "landscape"],
+  "requiredInputs": ["brand.name", "creative.keyMessage", "creative.cta.label"],
+  "optionalAssets": ["logo", "image", "music"],
+  "defaultScenes": ["hook", "problem", "reveal", "demo", "cta"],
+  "motionPresets": ["stagger_words", "fade_up", "slide_left", "scale_pop", "mask_reveal"]
+}

@@ -1,0 +1,1033 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://easymod.tech/specs/kinetic-project-v1.schema.json",
+  "title": "Kinetic Studio Project Input v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "project",
+    "template",
+    "creative",
+    "brand",
+    "targets",
+    "scenes",
+    "export"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Slug-like local project ID",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "campaignName": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "bn",
+            "mixed"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "clientOrProduct": {
+          "type": "string"
+        },
+        "versionLabel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "language"
+      ],
+      "additionalProperties": false
+    },
+    "template": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": [
+            "bold_kinetic",
+            "problem_solution",
+            "ui_showcase",
+            "feature_stack",
+            "social_hook",
+            "minimal_launch"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "default": "1.0.0"
+        },
+        "variant": {
+          "type": "string"
+        },
+        "customPresetName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "creative": {
+      "type": "object",
+      "properties": {
+        "objective": {
+          "type": "string",
+          "enum": [
+            "awareness",
+            "feature_promo",
+            "product_launch",
+            "conversion",
+            "announcement",
+            "tutorial_teaser"
+          ]
+        },
+        "audience": {
+          "type": "string"
+        },
+        "painPoint": {
+          "type": "string"
+        },
+        "keyMessage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "secondaryMessage": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "bold",
+            "premium",
+            "trustworthy",
+            "playful",
+            "minimal",
+            "energetic"
+          ]
+        },
+        "emotion": {
+          "type": "string"
+        },
+        "languageStyle": {
+          "type": "string",
+          "enum": [
+            "english",
+            "bangla",
+            "mixed"
+          ]
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "facebook_feed",
+              "facebook_reels",
+              "instagram_reels",
+              "youtube",
+              "website",
+              "desktop_presentation",
+              "tiktok"
+            ]
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "claimEvidenceNotes": {
+          "type": "string"
+        },
+        "requiredPhrases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "prohibitedPhrases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "cta": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "minLength": 1
+            },
+            "destination": {
+              "type": "string"
+            },
+            "urgency": {
+              "type": "string"
+            },
+            "secondaryLabel": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "objective",
+        "audience",
+        "keyMessage",
+        "tone",
+        "cta"
+      ],
+      "additionalProperties": false
+    },
+    "brand": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tagline": {
+          "type": "string"
+        },
+        "logoAssetId": {
+          "type": "string"
+        },
+        "iconAssetId": {
+          "type": "string"
+        },
+        "primaryColor": {
+          "type": "string",
+          "description": "CSS hex color, e.g. #17223B",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "backgroundColor": {
+          "type": "string",
+          "description": "CSS hex color, e.g. #17223B",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "textColor": {
+          "type": "string",
+          "description": "CSS hex color, e.g. #17223B",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "accentColor": {
+          "type": "string",
+          "description": "CSS hex color, e.g. #17223B",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "secondaryColor": {
+          "type": "string",
+          "description": "CSS hex color, e.g. #17223B",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "latinFontFamily": {
+          "type": "string"
+        },
+        "banglaFontFamily": {
+          "type": "string"
+        },
+        "fontWeight": {
+          "type": "integer",
+          "default": 700,
+          "minimum": 100,
+          "maximum": 900
+        },
+        "cornerRadiusPx": {
+          "type": "number",
+          "default": 16,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "stylePreset": {
+          "type": "string",
+          "enum": [
+            "bold_future",
+            "clean_minimal",
+            "friendly_commerce",
+            "custom"
+          ]
+        },
+        "logoPlacement": {
+          "type": "string",
+          "enum": [
+            "intro",
+            "outro",
+            "both",
+            "throughout",
+            "none"
+          ]
+        },
+        "watermark": {
+          "type": "boolean",
+          "default": false
+        },
+        "reducedMotion": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "name",
+        "primaryColor",
+        "backgroundColor",
+        "textColor",
+        "accentColor"
+      ],
+      "additionalProperties": false
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique project-local asset ID",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "logo",
+              "image",
+              "video",
+              "music",
+              "voiceover",
+              "sound_effect",
+              "font"
+            ]
+          },
+          "file": {
+            "type": "string",
+            "description": "Relative path under the project assets folder; import files into the project first",
+            "minLength": 1
+          },
+          "alt": {
+            "type": "string",
+            "description": "Description, useful for organization"
+          },
+          "usageRights": {
+            "type": "string",
+            "description": "owner|licensed|public_domain|unknown",
+            "enum": [
+              "owner",
+              "licensed",
+              "public_domain",
+              "unknown"
+            ]
+          },
+          "fit": {
+            "type": "string",
+            "enum": [
+              "contain",
+              "cover"
+            ]
+          },
+          "focalX": {
+            "type": "number",
+            "default": 0.5,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "focalY": {
+            "type": "number",
+            "default": 0.5,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "cropEnabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "volume": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "startOffsetSeconds": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "file"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "portrait",
+              "landscape",
+              "square"
+            ]
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 7680
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 7680
+          },
+          "fps": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 24,
+            "maximum": 60
+          },
+          "safeMarginPercent": {
+            "type": "number",
+            "default": 7,
+            "minimum": 0,
+            "maximum": 30
+          },
+          "fitMode": {
+            "type": "string",
+            "default": "reflow",
+            "enum": [
+              "reflow",
+              "crop",
+              "letterbox"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "width",
+          "height",
+          "fps"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "logo_intro",
+              "kinetic_text",
+              "problem",
+              "solution",
+              "feature",
+              "ui_demo",
+              "stat",
+              "testimonial",
+              "cta",
+              "outro"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "durationSeconds": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 120
+          },
+          "eyebrow": {
+            "type": "string"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "subheadline": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "bulletPoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 0
+          },
+          "highlightWords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 0
+          },
+          "ctaLabel": {
+            "type": "string"
+          },
+          "ctaDestination": {
+            "type": "string"
+          },
+          "mediaAssetIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 0
+          },
+          "layout": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "centered",
+              "split_left",
+              "split_right",
+              "stacked",
+              "full_bleed",
+              "device_mockup"
+            ]
+          },
+          "backgroundColor": {
+            "type": "string",
+            "description": "CSS hex color, e.g. #17223B",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "textColor": {
+            "type": "string",
+            "description": "CSS hex color, e.g. #17223B",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "accentColor": {
+            "type": "string",
+            "description": "CSS hex color, e.g. #17223B",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "overlayOpacity": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "fontSizeScale": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0.5,
+            "maximum": 2
+          },
+          "textAlignment": {
+            "type": "string",
+            "enum": [
+              "left",
+              "center",
+              "right"
+            ]
+          },
+          "motion": {
+            "type": "object",
+            "properties": {
+              "entrance": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "fade_up",
+                  "slide_left",
+                  "slide_right",
+                  "scale_pop",
+                  "mask_reveal",
+                  "type_on",
+                  "split_letters",
+                  "stagger_words",
+                  "bounce"
+                ]
+              },
+              "emphasis": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "highlight",
+                  "pulse",
+                  "underline_sweep",
+                  "word_swap",
+                  "letter_tracking",
+                  "count_up"
+                ]
+              },
+              "exit": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "fade",
+                  "slide_left",
+                  "slide_right",
+                  "zoom_out",
+                  "wipe"
+                ]
+              },
+              "easing": {
+                "type": "string",
+                "enum": [
+                  "linear",
+                  "ease_out",
+                  "ease_in_out",
+                  "spring",
+                  "back_out"
+                ]
+              },
+              "intensity": {
+                "type": "number",
+                "default": 0.65,
+                "minimum": 0,
+                "maximum": 1
+              },
+              "delaySeconds": {
+                "type": "number",
+                "default": 0,
+                "minimum": 0
+              },
+              "staggerMilliseconds": {
+                "type": "number",
+                "default": 65,
+                "minimum": 0,
+                "maximum": 2000
+              },
+              "holdSeconds": {
+                "type": "number",
+                "default": 0,
+                "minimum": 0
+              },
+              "motionBlur": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "entrance",
+              "exit"
+            ],
+            "additionalProperties": false
+          },
+          "afterTransition": {
+            "type": "string",
+            "enum": [
+              "cut",
+              "crossfade",
+              "wipe_left",
+              "wipe_right",
+              "zoom",
+              "flash"
+            ]
+          },
+          "transitionDurationSeconds": {
+            "type": "number",
+            "default": 0.35,
+            "minimum": 0,
+            "maximum": 2
+          },
+          "deviceFrame": {
+            "type": "string",
+            "enum": [
+              "none",
+              "mobile",
+              "desktop",
+              "browser_window"
+            ]
+          },
+          "cursorAnimation": {
+            "type": "boolean",
+            "default": false
+          },
+          "cursorPath": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "timeSeconds": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "timeSeconds"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0
+          },
+          "cameraZoom": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0.5,
+            "maximum": 3
+          },
+          "cameraPanX": {
+            "type": "number",
+            "default": 0,
+            "minimum": -1,
+            "maximum": 1
+          },
+          "cameraPanY": {
+            "type": "number",
+            "default": 0,
+            "minimum": -1,
+            "maximum": 1
+          },
+          "captionText": {
+            "type": "string"
+          },
+          "soundEffectAssetId": {
+            "type": "string"
+          },
+          "voiceoverAssetId": {
+            "type": "string"
+          },
+          "musicVolumeOverride": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "notes": {
+            "type": "string"
+          },
+          "layoutOverrides": {
+            "type": "object",
+            "properties": {
+              "portrait": {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string"
+                  },
+                  "fontSizeScale": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 2
+                  },
+                  "textAlignment": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "landscape": {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string"
+                  },
+                  "fontSizeScale": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 2
+                  },
+                  "textAlignment": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "square": {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string"
+                  },
+                  "fontSizeScale": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 2
+                  },
+                  "textAlignment": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "durationSeconds",
+          "headline",
+          "motion"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "audio": {
+      "type": "object",
+      "properties": {
+        "musicAssetId": {
+          "type": "string"
+        },
+        "musicVolume": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "voiceoverAssetId": {
+          "type": "string"
+        },
+        "voiceoverVolume": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "startOffsetSeconds": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0
+        },
+        "fadeInSeconds": {
+          "type": "number",
+          "default": 0.4,
+          "minimum": 0,
+          "maximum": 10
+        },
+        "fadeOutSeconds": {
+          "type": "number",
+          "default": 0.6,
+          "minimum": 0,
+          "maximum": 10
+        },
+        "duckMusicUnderVoice": {
+          "type": "boolean",
+          "default": true
+        },
+        "beatSync": {
+          "type": "string",
+          "default": "off",
+          "enum": [
+            "off",
+            "manual_markers"
+          ]
+        },
+        "beatMarkersSeconds": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          },
+          "minItems": 0
+        },
+        "muteAll": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "captions": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "scene_text",
+            "scene_caption_text",
+            "manual"
+          ]
+        },
+        "position": {
+          "type": "string",
+          "enum": [
+            "top",
+            "center",
+            "bottom"
+          ]
+        },
+        "maxWordsPerLine": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "fontSizeScale": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "highlightActiveWords": {
+          "type": "boolean",
+          "default": false
+        },
+        "backgroundBox": {
+          "type": "boolean",
+          "default": false
+        },
+        "color": {
+          "type": "string",
+          "description": "CSS hex color, e.g. #17223B",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "manualCues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "startSeconds": {
+                "type": "number",
+                "minimum": 0
+              },
+              "endSeconds": {
+                "type": "number",
+                "minimum": 0
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "startSeconds",
+              "endSeconds",
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "export": {
+      "type": "object",
+      "properties": {
+        "fileStem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "mp4",
+            "webm",
+            "mov"
+          ]
+        },
+        "videoCodec": {
+          "type": "string",
+          "enum": [
+            "h264",
+            "h265",
+            "vp9"
+          ]
+        },
+        "audioCodec": {
+          "type": "string",
+          "enum": [
+            "aac",
+            "opus",
+            "pcm"
+          ]
+        },
+        "qualityPreset": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "standard",
+            "high"
+          ]
+        },
+        "workers": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 8
+        },
+        "useGpuIfAvailable": {
+          "type": "boolean",
+          "default": false
+        },
+        "overwriteExisting": {
+          "type": "boolean",
+          "default": false
+        },
+        "exportFolder": {
+          "type": "string",
+          "description": "User-selected folder relative to allowed export root; output always confirmed locally"
+        },
+        "includeProjectArchive": {
+          "type": "boolean",
+          "default": true
+        },
+        "includeThumbnail": {
+          "type": "boolean",
+          "default": true
+        },
+        "keepIntermediates": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "fileStem",
+        "format",
+        "videoCodec",
+        "audioCodec",
+        "qualityPreset"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "1.0",
+  "project": {
+    "name": "MY PROMO VIDEO",
+    "language": "en"
+  },
+  "template": {
+    "id": "bold_kinetic",
+    "version": "1.0.0"
+  },
+  "creative": {
+    "objective": "product_launch",
+    "audience": "DESCRIBE YOUR TARGET CUSTOMER",
+    "keyMessage": "YOUR SINGLE MOST IMPORTANT MESSAGE",
+    "tone": "bold",
+    "cta": {
+      "label": "YOUR CALL TO ACTION",
+      "destination": ""
+    }
+  },
+  "brand": {
+    "name": "YOUR BRAND",
+    "primaryColor": "#7460D9",
+    "backgroundColor": "#17223B",
+    "textColor": "#FFFFFF",
+    "accentColor": "#F4C35E",
+    "latinFontFamily": "Arial",
+    "banglaFontFamily": "Noto Sans Bengali"
+  },
+  "assets": [],
+  "targets": [
+    {
+      "id": "portrait",
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "safeMarginPercent": 9,
+      "fitMode": "reflow"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "intro",
+      "kind": "kinetic_text",
+      "durationSeconds": 5,
+      "headline": "YOUR HEADLINE",
+      "subheadline": "YOUR SUPPORTING TEXT",
+      "motion": {
+        "entrance": "stagger_words",
+        "exit": "fade"
+      }
+    },
+    {
+      "id": "cta",
+      "kind": "cta",
+      "durationSeconds": 4,
+      "headline": "YOUR FINAL MESSAGE",
+      "ctaLabel": "YOUR CALL TO ACTION",
+      "motion": {
+        "entrance": "scale_pop",
+        "exit": "fade"
+      }
+    }
+  ],
+  "audio": {
+    "muteAll": true
+  },
+  "captions": {
+    "enabled": false
+  },
+  "export": {
+    "fileStem": "my-promo",
+    "format": "mp4",
+    "videoCodec": "h264",
+    "audioCodec": "aac",
+    "qualityPreset": "standard",
+    "workers": 1
+  }
+}

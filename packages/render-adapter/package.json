@@ -1,0 +1,12 @@
+{
+  "name": "@kinetic-studio/render-adapter",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.4.0"
+  }
+}
