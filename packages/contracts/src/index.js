@@ -138,10 +138,24 @@ export function createBlankProject(name = 'My Kinetic Promo', language = 'en') {
       }
     ],
     audio: {
-      muteAll: true,
+      mode: 'silent',
+      muteAll: false,
+      musicAssetId: null,
       musicVolume: 0.25,
+      voiceoverAssetId: null,
+      voiceoverVolume: 1.0,
       fadeInSeconds: 0.5,
-      fadeOutSeconds: 0.8
+      fadeOutSeconds: 0.8,
+      duckMusicUnderVoice: true,
+      duckingDb: -12,
+      targetLufs: -16,
+      narration: {
+        provider: 'gemini',
+        language: language === 'bn' ? 'bn' : 'en',
+        voice: 'Puck',
+        speed: 1.0
+      },
+      clips: []
     },
     captions: {
       enabled: false,
@@ -224,6 +238,12 @@ export function createEasyModeratorProject() {
         file: 'assets/inbox-demo.png',
         usageRights: 'owner',
         fit: 'contain'
+      },
+      {
+        id: 'music',
+        kind: 'music',
+        file: 'assets/background-music.wav',
+        usageRights: 'licensed'
       }
     ],
     targets: [
@@ -252,6 +272,7 @@ export function createEasyModeratorProject() {
         eyebrow: 'THE CHALLENGE',
         headline: 'Too many customer messages?',
         subheadline: 'Too little time to reply?',
+        narrationText: 'Too many customer messages? Hard to keep up with replies?',
         highlightWords: ['messages'],
         layout: 'centered',
         motion: {
@@ -272,6 +293,7 @@ export function createEasyModeratorProject() {
         headline: 'Running your shop should feel simpler.',
         subheadline: 'Manual replies slow your team down.',
         body: 'Messages, questions, and orders need instant attention.',
+        narrationText: 'Manual typing and slow responses hurt your sales and customer trust.',
         layout: 'centered',
         motion: {
           entrance: 'slide_left',
@@ -286,6 +308,7 @@ export function createEasyModeratorProject() {
         eyebrow: 'THE SOLUTION',
         headline: 'Meet EasyModerator',
         subheadline: 'A better way to manage conversations.',
+        narrationText: 'Meet EasyModerator, the smart assistant built for modern merchants.',
         mediaAssetIds: ['logo'],
         layout: 'centered',
         motion: {
@@ -301,6 +324,7 @@ export function createEasyModeratorProject() {
         eyebrow: 'SMART INBOX',
         headline: 'Conversations in Action',
         subheadline: 'Real interface. Clear merchant control.',
+        narrationText: 'Organize Facebook and WhatsApp chats in one unified intelligent inbox.',
         mediaAssetIds: ['inbox'],
         layout: 'device_mockup',
         deviceFrame: 'browser_window',
@@ -316,6 +340,7 @@ export function createEasyModeratorProject() {
         durationSeconds: 4,
         headline: 'Take control of your conversations.',
         subheadline: 'EasyModerator',
+        narrationText: 'Take control of your customer conversations today with EasyModerator.',
         ctaLabel: 'Explore EasyModerator',
         ctaDestination: 'https://easymod.tech',
         mediaAssetIds: ['logo'],
@@ -328,12 +353,24 @@ export function createEasyModeratorProject() {
       }
     ],
     audio: {
-      muteAll: true,
+      mode: 'voice_and_music',
+      muteAll: false,
+      musicAssetId: 'music',
       musicVolume: 0.22,
+      voiceoverAssetId: null,
+      voiceoverVolume: 1.0,
       fadeInSeconds: 0.4,
       fadeOutSeconds: 0.8,
       duckMusicUnderVoice: true,
-      beatSync: 'off'
+      duckingDb: -12,
+      targetLufs: -16,
+      narration: {
+        provider: 'gemini',
+        language: 'mixed',
+        voice: 'Puck',
+        speed: 1.0
+      },
+      clips: []
     },
     captions: {
       enabled: false,
@@ -506,10 +543,24 @@ export function createSaasStarterProject() {
       }
     ],
     audio: {
-      muteAll: true,
+      mode: 'voice_and_music',
+      muteAll: false,
+      musicAssetId: null,
       musicVolume: 0.25,
+      voiceoverAssetId: null,
+      voiceoverVolume: 1.0,
       fadeInSeconds: 0.4,
-      fadeOutSeconds: 0.8
+      fadeOutSeconds: 0.8,
+      duckMusicUnderVoice: true,
+      duckingDb: -12,
+      targetLufs: -16,
+      narration: {
+        provider: 'gemini',
+        language: 'en',
+        voice: 'Puck',
+        speed: 1.0
+      },
+      clips: []
     },
     captions: {
       enabled: false,
@@ -674,10 +725,24 @@ export function createMobileAppStarterProject() {
       }
     ],
     audio: {
-      muteAll: true,
+      mode: 'voice_and_music',
+      muteAll: false,
+      musicAssetId: null,
       musicVolume: 0.25,
+      voiceoverAssetId: null,
+      voiceoverVolume: 1.0,
       fadeInSeconds: 0.4,
-      fadeOutSeconds: 0.8
+      fadeOutSeconds: 0.8,
+      duckMusicUnderVoice: true,
+      duckingDb: -12,
+      targetLufs: -16,
+      narration: {
+        provider: 'gemini',
+        language: 'en',
+        voice: 'Puck',
+        speed: 1.0
+      },
+      clips: []
     },
     captions: {
       enabled: false,
@@ -743,7 +808,14 @@ export function createGuidedStoryBanglaProject() {
       logoPlacement: 'outro',
       watermark: false
     },
-    assets: [],
+    assets: [
+      {
+        id: 'music',
+        kind: 'music',
+        file: 'assets/background-music.wav',
+        usageRights: 'licensed'
+      }
+    ],
     targets: [
       {
         id: 'portrait_4_5',
@@ -924,10 +996,24 @@ export function createGuidedStoryBanglaProject() {
       }
     ],
     audio: {
-      muteAll: true,
-      musicVolume: 0.25,
-      fadeInSeconds: 0.5,
-      fadeOutSeconds: 0.8
+      mode: 'voice_and_music',
+      muteAll: false,
+      musicAssetId: 'music',
+      musicVolume: 0.22,
+      voiceoverAssetId: null,
+      voiceoverVolume: 1.0,
+      fadeInSeconds: 0.4,
+      fadeOutSeconds: 0.8,
+      duckMusicUnderVoice: true,
+      duckingDb: -12,
+      targetLufs: -16,
+      narration: {
+        provider: 'gemini',
+        language: 'bn',
+        voice: 'Puck',
+        speed: 1.0
+      },
+      clips: []
     },
     captions: {
       enabled: false,
@@ -949,4 +1035,93 @@ export function createGuidedStoryBanglaProject() {
       keepIntermediates: false
     }
   };
+}
+
+export function createAudioClip({
+  id = `clip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  kind = 'voice',
+  assetId,
+  sceneId = null,
+  offsetMs = 0,
+  trimInMs = 0,
+  trimOutMs = null,
+  volumeDb = 0,
+  fadeInMs = 0,
+  fadeOutMs = 0,
+  ducking = false,
+  loop = false,
+  enabled = true
+}) {
+  return {
+    id,
+    kind,
+    assetId,
+    sceneId,
+    offsetMs,
+    trimInMs,
+    trimOutMs,
+    volumeDb,
+    fadeInMs,
+    fadeOutMs,
+    ducking,
+    loop,
+    enabled
+  };
+}
+
+export function migrateProjectAudio(project) {
+  if (!project) return project;
+  if (!project.audio) {
+    project.audio = {
+      mode: 'silent',
+      muteAll: false,
+      musicVolume: 0.25,
+      voiceoverVolume: 1.0,
+      fadeInSeconds: 0.4,
+      fadeOutSeconds: 0.8,
+      duckMusicUnderVoice: true,
+      duckingDb: -12,
+      targetLufs: -16,
+      clips: []
+    };
+  }
+
+  // Ensure explicit mode is set
+  if (!project.audio.mode) {
+    if (project.audio.muteAll) {
+      project.audio.mode = 'silent';
+    } else if (project.audio.voiceoverAssetId && project.audio.musicAssetId) {
+      project.audio.mode = 'voice_and_music';
+    } else if (project.audio.voiceoverAssetId) {
+      project.audio.mode = 'imported_voice';
+    } else if (project.audio.musicAssetId) {
+      project.audio.mode = 'music_only';
+    } else {
+      project.audio.mode = 'voice_and_music';
+    }
+  }
+
+  if (!Array.isArray(project.audio.clips)) {
+    project.audio.clips = [];
+  }
+
+  if (typeof project.audio.duckMusicUnderVoice !== 'boolean') {
+    project.audio.duckMusicUnderVoice = true;
+  }
+  if (typeof project.audio.duckingDb !== 'number') {
+    project.audio.duckingDb = -12;
+  }
+  if (typeof project.audio.targetLufs !== 'number') {
+    project.audio.targetLufs = -16;
+  }
+  if (!project.audio.narration) {
+    project.audio.narration = {
+      provider: 'gemini',
+      language: project.project?.language === 'bn' ? 'bn' : (project.project?.language === 'mixed' ? 'mixed' : 'en'),
+      voice: 'Puck',
+      speed: 1.0
+    };
+  }
+
+  return project;
 }

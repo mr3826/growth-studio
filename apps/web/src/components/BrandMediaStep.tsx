@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Project } from '../types';
 import { uploadAsset } from '../api';
 import { Palette, Upload, Image as ImageIcon, Music, Trash2, Check, ArrowRight, ArrowLeft } from 'lucide-react';
+import { AudioTab } from './AudioTab';
 
 interface BrandMediaStepProps {
   project: Project;
@@ -80,7 +81,7 @@ export const BrandMediaStep: React.FC<BrandMediaStepProps> = ({
       accent: '#CCFF00'
     },
     {
-      name: 'Deep Space & Amber',
+      name: 'EasyModerator (Bold & Future-Facing)',
       bg: '#17223B',
       primary: '#7460D9',
       text: '#FFFFFF',
@@ -325,6 +326,11 @@ export const BrandMediaStep: React.FC<BrandMediaStepProps> = ({
               })
             )}
           </div>
+        </div>
+
+        {/* Audio Studio & Voiceover Pipeline */}
+        <div className="form-card" style={{ gridColumn: '1 / -1' }}>
+          <AudioTab project={project} onChange={onChange} />
         </div>
       </div>
 

@@ -32,7 +32,11 @@ import {
   getChromePath,
   renderVideo,
   probeMedia,
-  killProcessTree
+  killProcessTree,
+  pcmToWav,
+  GEMINI_TTS_VOICES,
+  isGeminiTtsAvailable,
+  synthesizeSpeechGemini
 } from '@kinetic-studio/render-adapter';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -237,8 +241,26 @@ export async function buildServer() {
     if (project.export) project.export.fileStem = id;
 
     fs.mkdirSync(targetDir, { recursive: true });
-    fs.mkdirSync(path.join(targetDir, 'assets'), { recursive: true });
+    const assetsDir = path.join(targetDir, 'assets');
+    fs.mkdirSync(assetsDir, { recursive: true });
     fs.mkdirSync(path.join(targetDir, 'snapshots'), { recursive: true });
+
+    // Seed default assets from starter repo if referenced
+    const seedAssetsDir = path.resolve('data/projects/easymoderator-launch/assets');
+    if (fs.existsSync(seedAssetsDir) && Array.isArray(project.assets)) {
+      for (const asset of project.assets) {
+        if (asset.file) {
+          const fileName = path.basename(asset.file);
+          const seedFilePath = path.join(seedAssetsDir, fileName);
+          const targetFilePath = path.join(assetsDir, fileName);
+          if (fs.existsSync(seedFilePath) && !fs.existsSync(targetFilePath)) {
+            try {
+              fs.copyFileSync(seedFilePath, targetFilePath);
+            } catch (_) {}
+          }
+        }
+      }
+    }
 
     const projFile = path.join(targetDir, 'project.json');
     fs.writeFileSync(projFile, JSON.stringify(project, null, 2), 'utf8');
@@ -392,6 +414,174 @@ export async function buildServer() {
     };
     reply.type(mimeMap[ext] || 'application/octet-stream');
     return fs.createReadStream(assetPath);
+  });
+
+  // Check TTS provider status
+  fastify.get('/api/narration/provider-status', async () => {
+    return {
+      available: isGeminiTtsAvailable(),
+      provider: 'gemini',
+      model: 'gemini-2.5-flash-preview-tts',
+      voices: GEMINI_TTS_VOICES,
+      supportedLanguages: [
+        { code: 'bn', name: 'Bangla (বাংলা)' },
+        { code: 'en', name: 'English' },
+        { code: 'mixed', name: 'Mixed Bangla + English' }
+      ]
+    };
+  });
+
+  // Preview TTS audio (in-browser immediate playback)
+  fastify.post('/api/narration/preview', async (request, reply) => {
+    const { text, voice = 'Puck', model = 'gemini-2.5-flash-preview-tts' } = request.body || {};
+    if (!text || !text.trim()) {
+      return reply.code(400).send({ error: 'Text is required for narration preview' });
+    }
+    try {
+      const cacheDir = path.join(storagePaths.renders, 'tts_cache');
+      if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+      const result = await synthesizeSpeechGemini({ text, voice, model, cacheDir });
+      reply.type('audio/wav');
+      return result.wavBuffer;
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Generate per-scene or all-scenes narration
+  fastify.post('/api/projects/:id/narration/generate', async (request, reply) => {
+    const { id } = request.params;
+    const safeId = path.basename(id);
+    const {
+      sceneId,
+      allScenes = false,
+      voice = 'Puck',
+      model = 'gemini-2.5-flash-preview-tts',
+      fitDuration = true
+    } = request.body || {};
+
+    const projFile = path.join(PROJECTS_DIR, safeId, 'project.json');
+    if (!fs.existsSync(projFile)) {
+      return reply.code(404).send({ error: 'Project not found' });
+    }
+    const project = JSON.parse(fs.readFileSync(projFile, 'utf8'));
+    project.assets = project.assets || [];
+
+    const cacheDir = path.join(storagePaths.renders, 'tts_cache');
+    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+
+    const scenesToProcess = allScenes
+      ? (project.scenes || [])
+      : (project.scenes || []).filter(s => s.id === sceneId);
+
+    if (scenesToProcess.length === 0) {
+      return reply.code(400).send({ error: 'No matching scenes found to generate narration for' });
+    }
+
+    const generated = [];
+
+    for (const scene of scenesToProcess) {
+      const narrationText = (scene.narrationText || scene.headline || '').trim();
+      if (!narrationText) continue;
+
+      const ttsResult = await synthesizeSpeechGemini({
+        text: narrationText,
+        voice,
+        model,
+        cacheDir
+      });
+
+      const filename = `narration-${scene.id}-${Date.now()}.wav`;
+      const assetRelPath = `assets/${filename}`;
+      const assetFullPath = path.join(PROJECTS_DIR, safeId, 'assets', filename);
+      fs.writeFileSync(assetFullPath, ttsResult.wavBuffer);
+
+      const assetId = `voice-${scene.id}`;
+      // Remove previous asset entry if any
+      project.assets = project.assets.filter(a => a.id !== assetId);
+      project.assets.push({
+        id: assetId,
+        kind: 'voice',
+        file: assetRelPath,
+        durationSeconds: ttsResult.durationSeconds,
+        sampleRate: ttsResult.sampleRate,
+        channels: 1,
+        source: 'gemini_tts',
+        provenance: {
+          model,
+          voice,
+          textLength: narrationText.length,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      scene.narrationAssetId = assetId;
+      scene.narrationDurationSeconds = ttsResult.durationSeconds;
+      if (fitDuration && scene.durationSeconds < ttsResult.durationSeconds + 0.5) {
+        scene.durationSeconds = Math.max(scene.durationSeconds, Math.ceil(ttsResult.durationSeconds + 0.5));
+      }
+
+      generated.push({
+        sceneId: scene.id,
+        assetId,
+        file: assetRelPath,
+        durationSeconds: ttsResult.durationSeconds,
+        sceneDuration: scene.durationSeconds
+      });
+    }
+
+    // Activate voice mode if previously silent or unset
+    if (!project.audio) project.audio = {};
+    if (project.audio.mode === 'silent' || !project.audio.mode) {
+      project.audio.mode = project.audio.musicAssetId ? 'voice_and_music' : 'generated_voice';
+    }
+    project.audio.muteAll = false;
+    project.audio.narration = {
+      provider: 'gemini',
+      voice,
+      model
+    };
+
+    fs.writeFileSync(projFile, JSON.stringify(project, null, 2), 'utf8');
+
+    return {
+      success: true,
+      generated,
+      project
+    };
+  });
+
+  // Adjust scene durations to fit voiceover
+  fastify.post('/api/projects/:id/audio/fit-scenes', async (request, reply) => {
+    const { id } = request.params;
+    const safeId = path.basename(id);
+    const { paddingSeconds = 0.5 } = request.body || {};
+
+    const projFile = path.join(PROJECTS_DIR, safeId, 'project.json');
+    if (!fs.existsSync(projFile)) {
+      return reply.code(404).send({ error: 'Project not found' });
+    }
+    const project = JSON.parse(fs.readFileSync(projFile, 'utf8'));
+
+    let changed = false;
+    for (const scene of (project.scenes || [])) {
+      if (scene.narrationDurationSeconds) {
+        const needed = Math.max(scene.durationSeconds || 3, Math.ceil(scene.narrationDurationSeconds + paddingSeconds));
+        if (scene.durationSeconds !== needed) {
+          scene.durationSeconds = needed;
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      fs.writeFileSync(projFile, JSON.stringify(project, null, 2), 'utf8');
+    }
+
+    return {
+      success: true,
+      scenes: project.scenes
+    };
   });
 
   // Run Preflight validation & storage check
@@ -659,15 +849,72 @@ async function executeRenderJob(job, project, signal = null) {
   job.logs.push(`Starting offline render of ${comp.totalFrames} frames at ${comp.target.width}x${comp.target.height} (${comp.fps} FPS) on ${storagePaths.root}...`);
   jobEmitter.emit(`job:${job.id}`, { ...job });
 
-  // Locate optional audio
+  // Assemble audio tracks and music
+  const audioTracks = [];
   let audioPath = null;
-  if (!project.audio?.muteAll && project.audio?.musicAssetId) {
-    const audioAsset = (project.assets || []).find(a => a.id === project.audio.musicAssetId);
-    if (audioAsset && audioAsset.file) {
-      const candidateAudio = path.join(PROJECTS_DIR, job.projectId, audioAsset.file);
-      if (fs.existsSync(candidateAudio)) {
-        audioPath = candidateAudio;
-        job.logs.push(`Mixing audio track: ${audioAsset.file}`);
+  const isMuteAll = project.audio?.muteAll === true || project.audio?.mode === 'silent';
+
+  if (!isMuteAll) {
+    // 1. Scene narration tracks
+    let sceneStartTime = 0;
+    for (const scene of (project.scenes || [])) {
+      const sceneDur = Number(scene.durationSeconds || 3);
+      if (scene.narrationAssetId) {
+        const narrAsset = (project.assets || []).find(a => a.id === scene.narrationAssetId);
+        if (narrAsset && narrAsset.file) {
+          const narrPath = path.join(PROJECTS_DIR, job.projectId, narrAsset.file);
+          if (fs.existsSync(narrPath)) {
+            audioTracks.push({
+              id: `narration-${scene.id}`,
+              type: 'voice',
+              path: narrPath,
+              startTime: sceneStartTime,
+              duration: scene.narrationDurationSeconds || narrAsset.durationSeconds,
+              volume: project.audio?.voiceVolume ?? 1.0
+            });
+            job.logs.push(`Added scene narration (${scene.id}): ${narrAsset.file} at ${sceneStartTime.toFixed(2)}s`);
+          }
+        }
+      }
+      sceneStartTime += sceneDur;
+    }
+
+    // 2. Project-level clips (if any defined in project.audio.clips)
+    for (const clip of (project.audio?.clips || [])) {
+      const asset = (project.assets || []).find(a => a.id === clip.assetId);
+      if (asset && asset.file) {
+        const clipPath = path.join(PROJECTS_DIR, job.projectId, asset.file);
+        if (fs.existsSync(clipPath) && !audioTracks.some(t => t.path === clipPath)) {
+          audioTracks.push({
+            id: clip.id,
+            type: clip.type || 'music',
+            path: clipPath,
+            startTime: clip.startTime || 0,
+            duration: clip.duration,
+            volume: clip.volume ?? (clip.type === 'voice' ? 1.0 : 0.25)
+          });
+        }
+      }
+    }
+
+    // 3. Background music
+    if (project.audio?.musicAssetId) {
+      const audioAsset = (project.assets || []).find(a => a.id === project.audio.musicAssetId);
+      if (audioAsset && audioAsset.file) {
+        let candidateAudio = path.join(PROJECTS_DIR, job.projectId, audioAsset.file);
+        if (!fs.existsSync(candidateAudio)) {
+          const seedAudio = path.resolve('data/projects/easymoderator-launch', audioAsset.file);
+          if (fs.existsSync(seedAudio)) {
+            try {
+              fs.mkdirSync(path.dirname(candidateAudio), { recursive: true });
+              fs.copyFileSync(seedAudio, candidateAudio);
+            } catch (_) {}
+          }
+        }
+        if (fs.existsSync(candidateAudio)) {
+          audioPath = candidateAudio;
+          job.logs.push(`Mixing music track: ${audioAsset.file}`);
+        }
       }
     }
   }
@@ -679,6 +926,7 @@ async function executeRenderJob(job, project, signal = null) {
       totalFrames: comp.totalFrames,
       totalDuration: comp.totalDuration,
       outputPath: job.outputPath,
+      audioTracks,
       audioPath,
       audioConfig: project.audio || {},
       tempParentDir: RENDERS_DIR,
@@ -703,7 +951,13 @@ async function executeRenderJob(job, project, signal = null) {
     jobEmitter.emit(`job:${job.id}`, { ...job });
 
     const probe = await probeMedia(job.outputPath);
-    job.metadata = probe;
+    job.metadata = {
+      ...probe,
+      audioMetrics: renderResult.audioMetrics
+    };
+    if (renderResult.audioMetrics?.volume) {
+      job.logs.push(`Audio volume verified: mean ${renderResult.audioMetrics.volume.meanVolumeDb} dB, max ${renderResult.audioMetrics.volume.maxVolumeDb} dB`);
+    }
 
     // Verification checks
     if (probe.width !== comp.target.width || probe.height !== comp.target.height) {

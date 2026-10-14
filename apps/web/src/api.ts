@@ -1,4 +1,4 @@
-import { Project, PreflightReport, RenderJob, StarterTemplate } from './types';
+import { Project, PreflightReport, RenderJob, StarterTemplate, NarrationStatus } from './types';
 
 const API_BASE = '/api';
 
@@ -111,3 +111,52 @@ export function getPreviewHtmlUrl(projectId: string, targetId: string) {
 export function getDownloadUrl(jobId: string) {
   return `${API_BASE}/renders/${jobId}/file`;
 }
+
+export async function fetchNarrationStatus(): Promise<NarrationStatus> {
+  const res = await fetch(`${API_BASE}/narration/provider-status`);
+  if (!res.ok) throw new Error('Failed to fetch narration provider status');
+  return res.json();
+}
+
+export async function previewNarration(text: string, voice = 'Puck'): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/narration/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to preview narration');
+  }
+  return res.blob();
+}
+
+export async function generateNarration(
+  projectId: string,
+  options: { sceneId?: string; allScenes?: boolean; voice?: string; fitDuration?: boolean }
+): Promise<{ success: boolean; generated: any[]; project: Project }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/narration/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options)
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to generate narration');
+  }
+  return res.json();
+}
+
+export async function fitScenesToAudio(
+  projectId: string,
+  paddingSeconds = 0.5
+): Promise<{ success: boolean; scenes: any[] }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/audio/fit-scenes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paddingSeconds })
+  });
+  if (!res.ok) throw new Error('Failed to fit scenes to audio');
+  return res.json();
+}
+

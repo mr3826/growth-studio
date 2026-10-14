@@ -374,6 +374,25 @@
             "type": "number",
             "default": 0,
             "minimum": 0
+          },
+          "durationSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "format": {
+            "type": "string"
+          },
+          "sampleRate": {
+            "type": "integer"
+          },
+          "channels": {
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "object"
           }
         },
         "required": [
@@ -488,6 +507,16 @@
           },
           "body": {
             "type": "string"
+          },
+          "narrationText": {
+            "type": "string"
+          },
+          "narrationAssetId": {
+            "type": "string"
+          },
+          "narrationDurationSeconds": {
+            "type": "number",
+            "minimum": 0
           },
           "bulletPoints": {
             "type": "array",
@@ -865,23 +894,38 @@
     "audio": {
       "type": "object",
       "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "silent",
+            "imported_voice",
+            "generated_voice",
+            "music_only",
+            "voice_and_music"
+          ],
+          "default": "voice_and_music"
+        },
+        "muteAll": {
+          "type": "boolean",
+          "default": false
+        },
         "musicAssetId": {
-          "type": "string"
+          "type": ["string", "null"]
         },
         "musicVolume": {
           "type": "number",
-          "default": 0.2,
+          "default": 0.25,
           "minimum": 0,
           "maximum": 1
         },
         "voiceoverAssetId": {
-          "type": "string"
+          "type": ["string", "null"]
         },
         "voiceoverVolume": {
           "type": "number",
           "default": 1,
           "minimum": 0,
-          "maximum": 1
+          "maximum": 2
         },
         "startOffsetSeconds": {
           "type": "number",
@@ -896,13 +940,21 @@
         },
         "fadeOutSeconds": {
           "type": "number",
-          "default": 0.6,
+          "default": 0.8,
           "minimum": 0,
           "maximum": 10
         },
         "duckMusicUnderVoice": {
           "type": "boolean",
           "default": true
+        },
+        "duckingDb": {
+          "type": "number",
+          "default": -12
+        },
+        "targetLufs": {
+          "type": "number",
+          "default": -16
         },
         "beatSync": {
           "type": "string",
@@ -920,9 +972,37 @@
           },
           "minItems": 0
         },
-        "muteAll": {
-          "type": "boolean",
-          "default": false
+        "clips": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "type": "string", "enum": ["voice", "music", "sfx"] },
+              "assetId": { "type": "string" },
+              "sceneId": { "type": "string" },
+              "offsetMs": { "type": "number", "default": 0 },
+              "trimInMs": { "type": "number", "default": 0 },
+              "trimOutMs": { "type": "number" },
+              "volumeDb": { "type": "number", "default": 0 },
+              "fadeInMs": { "type": "number", "default": 0 },
+              "fadeOutMs": { "type": "number", "default": 0 },
+              "ducking": { "type": "boolean", "default": false },
+              "loop": { "type": "boolean", "default": false },
+              "enabled": { "type": "boolean", "default": true }
+            },
+            "required": ["id", "kind", "assetId"]
+          }
+        },
+        "narration": {
+          "type": "object",
+          "properties": {
+            "provider": { "type": "string", "enum": ["gemini", "imported", "local"], "default": "gemini" },
+            "language": { "type": "string", "enum": ["bn", "en", "mixed"], "default": "bn" },
+            "voice": { "type": "string", "default": "Puck" },
+            "speed": { "type": "number", "default": 1.0 },
+            "style": { "type": "string" }
+          }
         }
       },
       "required": [],

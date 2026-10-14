@@ -103,11 +103,54 @@ export function runPreflight(project) {
     warnings.push(`Long-form video duration (${(totalDuration / 60).toFixed(1)}m). Please ensure adequate disk space on the target volume.`);
   }
 
+  // Audio Preflight Validation
+  const audio = project.audio || {};
+  const audioMode = audio.mode || (audio.muteAll ? 'silent' : 'voice_and_music');
+  const isSilent = audioMode === 'silent' || audio.muteAll === true;
+
+  if (isSilent) {
+    warnings.push('Audio is disabled or set to Silent Video mode. Exported MP4 will contain no audible sound.');
+  } else {
+    // Validate required tracks based on audio mode
+    const assets = project.assets || [];
+    if (audio.voiceoverAssetId) {
+      const foundVoice = assets.some(a => a.id === audio.voiceoverAssetId);
+      if (!foundVoice) {
+        errors.push(`Selected voiceover asset "${audio.voiceoverAssetId}" not found in project assets.`);
+      }
+    }
+    if (audio.musicAssetId) {
+      const foundMusic = assets.some(a => a.id === audio.musicAssetId);
+      if (!foundMusic) {
+        errors.push(`Selected background music asset "${audio.musicAssetId}" not found in project assets.`);
+      }
+    }
+    if (audio.clips && Array.isArray(audio.clips)) {
+      audio.clips.forEach(clip => {
+        if (clip.enabled !== false) {
+          const found = assets.some(a => a.id === clip.assetId);
+          if (!found) {
+            errors.push(`Audio clip "${clip.id}" references missing asset "${clip.assetId}".`);
+          }
+        }
+      });
+    }
+
+    // Check if voice is expected but completely missing
+    const hasVoiceAsset = !!audio.voiceoverAssetId;
+    const hasVoiceClip = (audio.clips || []).some(c => c.kind === 'voice' && c.enabled !== false);
+    const hasSceneNarration = (project.scenes || []).some(s => !!s.narrationAssetId);
+    if ((audioMode === 'voice_and_music' || audioMode === 'imported_voice' || audioMode === 'generated_voice') && !hasVoiceAsset && !hasVoiceClip && !hasSceneNarration) {
+      warnings.push(`Audio mode is set to "${audioMode}", but no narration voiceover has been imported or generated yet.`);
+    }
+  }
+
   return {
     passed: errors.length === 0,
     errors,
     warnings,
-    totalDuration
+    totalDuration,
+    audioMode: isSilent ? 'silent' : audioMode
   };
 }
 
@@ -432,6 +475,28 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
     `;
   }).join('\n');
 
+  // Audio elements for interactive browser preview
+  let audioElementsHtml = '';
+  const isMute = project.audio?.muteAll === true || project.audio?.mode === 'silent';
+  if (!isMute && assetBaseUrl) {
+    if (project.audio?.musicAssetId) {
+      const mAsset = (project.assets || []).find(a => a.id === project.audio.musicAssetId);
+      if (mAsset && mAsset.file) {
+        const mVol = project.audio?.musicVolume ?? 0.25;
+        audioElementsHtml += `    <audio id="preview-music" src="${assetBaseUrl}${mAsset.file}" data-volume="${mVol}" loop preload="auto"></audio>\n`;
+      }
+    }
+    for (const s of timedScenes) {
+      if (s.narrationAssetId) {
+        const nAsset = (project.assets || []).find(a => a.id === s.narrationAssetId);
+        if (nAsset && nAsset.file) {
+          const vVol = project.audio?.voiceVolume ?? 1.0;
+          audioElementsHtml += `    <audio id="preview-narr-${s.id}" class="preview-narr" data-scene-id="${s.id}" data-start="${s.startTime}" data-end="${s.endTime}" data-volume="${vVol}" src="${assetBaseUrl}${nAsset.file}" preload="auto"></audio>\n`;
+        }
+      }
+    }
+  }
+
   // Build the complete, deterministic HTML page
   const html = `<!DOCTYPE html>
 <html lang="${escapeHtml(project.project?.language || 'en')}">
@@ -481,7 +546,7 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
       justify-content: center;
       background: ${isGuidedStory ?
         `radial-gradient(circle at 50% 25%, rgba(204, 255, 0, 0.12) 0%, rgba(249, 249, 246, 0) 65%), var(--bg)` :
-        `radial-gradient(circle at 50% 30%, rgba(116, 96, 217, 0.28) 0%, rgba(23, 34, 59, 0) 70%), var(--bg)`
+        `radial-gradient(circle at 50% 30%, ${brand.primaryColor || '#7460D9'}40 0%, transparent 70%), var(--bg)`
       };
     }
 
@@ -1088,6 +1153,8 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
     ${sceneElementsHtml}
   </div>
 
+  ${audioElementsHtml}
+
   <script>
     // Embedded Deterministic Animation Engine (Preview & MP4 Parity)
     (function() {
@@ -1097,6 +1164,44 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
 
       const sceneData = ${JSON.stringify(timedScenes)};
       const scenes = Array.from(document.querySelectorAll('.scene-card'));
+
+      // In-browser interactive audio preview sync
+      const previewMusic = document.getElementById('preview-music');
+      const narrAudios = Array.from(document.querySelectorAll('.preview-narr'));
+
+      if (previewMusic) {
+        previewMusic.volume = parseFloat(previewMusic.getAttribute('data-volume') || '0.25');
+      }
+      narrAudios.forEach(function(a) {
+        a.volume = parseFloat(a.getAttribute('data-volume') || '1.0');
+      });
+
+      function syncAudio(time, playing) {
+        if (previewMusic) {
+          try {
+            if (playing) {
+              if (previewMusic.paused) previewMusic.play().catch(function() {});
+            } else {
+              previewMusic.pause();
+            }
+          } catch (_) {}
+        }
+        narrAudios.forEach(function(a) {
+          const start = parseFloat(a.getAttribute('data-start') || '0');
+          const end = parseFloat(a.getAttribute('data-end') || '0');
+          try {
+            if (time >= start && time <= end && playing) {
+              if (a.paused) {
+                a.currentTime = Math.max(0, time - start);
+                a.play().catch(function() {});
+              }
+            } else {
+              if (!a.paused) a.pause();
+              if (time < start || time > end) a.currentTime = 0;
+            }
+          } catch (_) {}
+        });
+      }
 
       // Smooth Easing functions
       function easeOutCubic(x) {
@@ -1211,6 +1316,7 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
 
         window.__CURRENT_TIME__ = time;
         window.__CURRENT_FRAME__ = Math.round(time * fps);
+        syncAudio(time, isPlaying);
       };
 
       window.seekToFrame = function(f) {
@@ -1256,6 +1362,7 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
       window.play = function() {
         if (!isPlaying) {
           isPlaying = true;
+          syncAudio(currentTime, true);
           requestAnimationFrame(loop);
           if (window.parent && window.parent !== window) {
             window.parent.postMessage({ type: 'KINETIC_PLAYING', isPlaying: true }, '*');
@@ -1265,6 +1372,7 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
 
       window.pause = function() {
         isPlaying = false;
+        syncAudio(currentTime, false);
         if (window.parent && window.parent !== window) {
           window.parent.postMessage({ type: 'KINETIC_PLAYING', isPlaying: false }, '*');
         }

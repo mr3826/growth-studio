@@ -80,3 +80,29 @@
 - Rebuilt web frontend bundle (`npm run build`) in 4.87s into `apps/web/dist`.
 - Verified all 8 release exports on `E:\GrowthStudio\exports` with `ffprobe` (including 38s hero and 10m42s stress walkthrough).
 - All mandatory V0.01 acceptance gates passed.
+
+---
+
+## Growth Studio V0.02 — Audio, Brand Identity & Production Quality
+
+### V0.02 Phase Tracking
+
+| Wave | Description | Status | Evidence / Notes |
+| :--- | :--- | :--- | :--- |
+| **Wave A** | Establish baseline & repair silent exports | **COMPLETED** | Audited local changes; created feature branch `feat/growth-studio-v002-audio-brand-quality`. Replaced default silent AAC (`anullsrc`) with explicit audio modes (`silent`, `imported_voice`, `generated_voice`, `music_only`, `voice_and_music`). Added acoustic preflight validation and local WAV/MP3 import. |
+| **Wave B** | Optional Gemini TTS + narration workflow | **COMPLETED** | Created `packages/render-adapter/src/tts.js`. Integrated `@google/genai` using server process environment `CONTENT_STUDIO_GEMINI`. Converts 24kHz linear PCM to standard 44-byte RIFF WAV buffers. Added endpoints for provider status, preview, generation, and fit-scenes. Offline disk caching in `E:\GrowthStudio\renders\tts_cache`. |
+| **Wave C** | Real audio-mixing timeline | **COMPLETED** | Expanded audio schema with `AudioClip` entries, ducking (-12 dB), and social video loudness target (-16 LUFS / -1.5 dBTP). Implemented FFmpeg filtergraph with `asplit=2`, `adelay`, `aloop`, `afade`, `sidechaincompress`, and `loudnorm`. Real volume detection via `volumedetect` and `silencedetect`. Preview engine audio synchronization. |
+| **Wave D** | Brand-kit consistency & visual polish | **COMPLETED** | Added `EasyModerator — Bold & Future-Facing` brand kit (`#17223B`, `#7460D9`, `#F4C35E`, `#FFFFFF`). Maintained full generic brand reusability. Enhanced glowing accent pills, device mockups, radar pins, and Commerce Signal motifs across 16:9, 9:16, and 4:5. |
+| **Wave E** | Quality, reliability & mandatory matrix | **COMPLETED** | Executed 6-test matrix via `scripts/generate-v002-matrix.js` (Tests A, B, C, D, E, F). Verified acoustic levels (-19.8 dB to -16.5 dB for audible, -91 dB for explicit silent). 100% test pass on `tests/audio.test.js`, `tests/render.test.js`, `tests/server.test.js`, `tests/browser.test.js`. Full release evidence in `docs/RELEASE_EVIDENCE.md`. |
+
+### 2026-10-14 03:00 PM - 05:30 PM (V0.02 Waves A through E)
+- Created local feature branch `feat/growth-studio-v002-audio-brand-quality` from `feat/growth-studio-v001-completion`.
+- Upgraded `packages/contracts` with new audio schema properties (`mode`, `clips`, `duckingDb`, `targetLufs`, `narration`).
+- Implemented `packages/render-adapter/src/tts.js` supporting `gemini-2.5-flash-preview-tts` and standard RIFF WAV packing.
+- Updated `packages/render-adapter/src/index.js` with multi-track mixing, ducking filtergraph, and acoustic measurement helpers (`measureAudioVolume`, `detectSilence`).
+- Added Fastify server endpoints: `GET /api/narration/provider-status`, `POST /api/narration/preview`, `POST /api/projects/:id/narration/generate`, `POST /api/projects/:id/audio/fit-scenes`.
+- Built rich `AudioTab.tsx` in `apps/web/src/components/AudioTab.tsx` with mode picker, voice selector, volume sliders, ducking controls, and instant audio preview.
+- Added EasyModerator Bold & Future-Facing preset in `BrandKitTab.tsx` and `BrandMediaStep.tsx`.
+- Ran full test matrix: Tests A, B, C, D, E, F all generated, measured, keyframed, and PASSED.
+- Successfully built web production bundle (`npm run build`).
+

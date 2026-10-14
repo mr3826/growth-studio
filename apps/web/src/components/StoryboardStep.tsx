@@ -10,8 +10,13 @@ import {
   Sparkles,
   ArrowRight,
   ArrowLeft,
-  Bookmark
+  Bookmark,
+  Mic,
+  Play,
+  RefreshCw,
+  CheckCircle2
 } from 'lucide-react';
+import { generateNarration, fitScenesToAudio } from '../api';
 
 interface StoryboardStepProps {
   project: Project;
@@ -27,6 +32,9 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   onNext
 }) => {
   const [selectedSceneIndex, setSelectedSceneIndex] = useState<number>(0);
+  const [generatingSceneId, setGeneratingSceneId] = useState<string | null>(null);
+  const [isGeneratingAll, setIsGeneratingAll] = useState<boolean>(false);
+  const [isFittingAll, setIsFittingAll] = useState<boolean>(false);
 
   const scenes = project.scenes || [];
   const totalDuration = scenes.reduce((acc, s) => acc + (Number(s.durationSeconds) || 4), 0);
@@ -99,6 +107,64 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
     setSelectedSceneIndex(index + 1);
   };
 
+  const handleGenerateSceneVoice = async (sceneId: string) => {
+    setGeneratingSceneId(sceneId);
+    try {
+      const res = await generateNarration(project.project.id, {
+        sceneId,
+        voice: project.audio?.narration?.voice || 'Puck',
+        fitDuration: true
+      });
+      if (res.success && res.project) {
+        onChange(res.project);
+      }
+    } catch (err: any) {
+      alert(`Voice generation failed: ${err.message}`);
+    } finally {
+      setGeneratingSceneId(null);
+    }
+  };
+
+  const handleGenerateAllVoice = async () => {
+    setIsGeneratingAll(true);
+    try {
+      const res = await generateNarration(project.project.id, {
+        allScenes: true,
+        voice: project.audio?.narration?.voice || 'Puck',
+        fitDuration: true
+      });
+      if (res.success && res.project) {
+        onChange(res.project);
+      }
+    } catch (err: any) {
+      alert(`Voice generation failed: ${err.message}`);
+    } finally {
+      setIsGeneratingAll(false);
+    }
+  };
+
+  const handleFitAllScenes = async () => {
+    setIsFittingAll(true);
+    try {
+      const res = await fitScenesToAudio(project.project.id, 0.5);
+      if (res.success && res.scenes) {
+        onChange({ ...project, scenes: res.scenes });
+      }
+    } catch (err: any) {
+      alert(`Auto-fit failed: ${err.message}`);
+    } finally {
+      setIsFittingAll(false);
+    }
+  };
+
+  const handlePlaySceneVoice = (assetId: string) => {
+    const asset = (project.assets || []).find(a => a.id === assetId);
+    if (!asset || !asset.file) return;
+    const url = `/api/projects/${project.project.id}/${asset.file}`;
+    const audio = new Audio(url);
+    audio.play().catch(e => console.error('Audio play error:', e));
+  };
+
   const currentScene = scenes[selectedSceneIndex] || scenes[0];
 
   return (
@@ -121,10 +187,31 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
         <div className="storyboard-scenes-nav">
           <div className="nav-header-row">
             <span className="font-bold text-sm text-slate-300">SCENE SEQUENCE</span>
-            <button onClick={handleAddScene} className="btn-secondary btn-xs">
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              <span>Add Scene</span>
-            </button>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                type="button"
+                onClick={handleGenerateAllVoice}
+                disabled={isGeneratingAll}
+                className="btn-primary btn-xs"
+                title="Generate voiceover for all scenes with Gemini TTS"
+              >
+                <Mic className="w-3 h-3 mr-1" />
+                <span>{isGeneratingAll ? 'Generating...' : 'Voice All'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleFitAllScenes}
+                disabled={isFittingAll}
+                className="btn-secondary btn-xs"
+                title="Auto-fit scene durations to voice audio"
+              >
+                <span>{isFittingAll ? 'Fitting...' : 'Fit'}</span>
+              </button>
+              <button onClick={handleAddScene} className="btn-secondary btn-xs">
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                <span>Add</span>
+              </button>
+            </div>
           </div>
 
           <div className="scenes-items-stack">
@@ -328,6 +415,61 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                   placeholder="e.g. প্রতিটি মেসেজের উত্তর দেওয়া এখন আরও সহজ ও দ্রুত।"
                   onChange={(e) => handleUpdateScene(selectedSceneIndex, { subheadline: e.target.value })}
                 />
+              </div>
+
+              {/* Narration Script & Gemini TTS Voiceover */}
+              <div className="form-group" style={{ background: 'rgba(116,96,217,0.06)', padding: 12, borderRadius: 8, border: '1px solid rgba(116,96,217,0.2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: '#F4C35E' }}>
+                    <Mic size={14} /> Narration Script (Voiceover)
+                  </label>
+                  {currentScene.narrationAssetId && (
+                    <span style={{ fontSize: 11, color: '#34D399', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <CheckCircle2 size={12} /> {currentScene.narrationDurationSeconds?.toFixed(1)}s audio ready
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  rows={2}
+                  className="form-input"
+                  style={{ minHeight: 60 }}
+                  value={currentScene.narrationText ?? (currentScene.headline || '')}
+                  placeholder="Enter narration text in Bengali or English for this scene..."
+                  onChange={(e) => handleUpdateScene(selectedSceneIndex, { narrationText: e.target.value })}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleGenerateSceneVoice(currentScene.id)}
+                    disabled={generatingSceneId === currentScene.id}
+                  >
+                    <RefreshCw size={12} className={generatingSceneId === currentScene.id ? 'animate-spin' : ''} />
+                    <span>{generatingSceneId === currentScene.id ? 'Generating...' : 'Generate Voice (Gemini TTS)'}</span>
+                  </button>
+
+                  {currentScene.narrationAssetId && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => handlePlaySceneVoice(currentScene.narrationAssetId!)}
+                    >
+                      <Play size={12} /> Listen
+                    </button>
+                  )}
+
+                  {currentScene.narrationDurationSeconds && currentScene.durationSeconds < currentScene.narrationDurationSeconds + 0.4 && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ color: '#F4C35E', borderColor: 'rgba(244,195,94,0.3)' }}
+                      onClick={() => handleUpdateScene(selectedSceneIndex, { durationSeconds: Math.ceil(currentScene.narrationDurationSeconds! + 0.5) })}
+                      title="Audio is longer than scene. Click to adjust."
+                    >
+                      Fit ({Math.ceil(currentScene.narrationDurationSeconds + 0.5)}s)
+                    </button>
+                  )}
+                </div>
               </div>
 
               {(currentScene.kind === 'cta' || currentScene.ctaLabel) && (
