@@ -1,0 +1,234 @@
+[
+  {
+    "id": "export-1",
+    "name": "bold_kinetic_portrait_1080x1920",
+    "description": "Bold Kinetic Typography in Portrait 1080x1920 @ 30 FPS",
+    "targetId": "portrait",
+    "expected": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "aspectRatio": "9:16"
+    },
+    "probe": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration": 7,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "fileSize": 643921
+    },
+    "renderTimeSeconds": 35.7,
+    "outputPath": "E:\\GrowthStudio\\exports\\bold_kinetic_portrait_1080x1920.mp4",
+    "keyframes": [
+      "E:\\GrowthStudio\\exports\\keyframes\\bold_kinetic_portrait_1080x1920_start.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\bold_kinetic_portrait_1080x1920_mid.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\bold_kinetic_portrait_1080x1920_end.jpg"
+    ]
+  },
+  {
+    "id": "export-2",
+    "name": "bold_kinetic_landscape_1920x1080",
+    "description": "Bold Kinetic Typography in Landscape 1920x1080 @ 30 FPS",
+    "targetId": "landscape",
+    "expected": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "aspectRatio": "16:9"
+    },
+    "probe": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "duration": 7,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "fileSize": 712592
+    },
+    "renderTimeSeconds": 35.6,
+    "outputPath": "E:\\GrowthStudio\\exports\\bold_kinetic_landscape_1920x1080.mp4",
+    "keyframes": [
+      "E:\\GrowthStudio\\exports\\keyframes\\bold_kinetic_landscape_1920x1080_start.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\bold_kinetic_landscape_1920x1080_mid.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\bold_kinetic_landscape_1920x1080_end.jpg"
+    ]
+  },
+  {
+    "id": "export-3",
+    "name": "app_showcase_portrait_1080x1920",
+    "description": "App Showcase (FlowPay Mobile) in Portrait 1080x1920 @ 30 FPS",
+    "targetId": "portrait",
+    "expected": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "aspectRatio": "9:16"
+    },
+    "probe": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration": 7.5,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "fileSize": 593205
+    },
+    "renderTimeSeconds": 32.7,
+    "outputPath": "E:\\GrowthStudio\\exports\\app_showcase_portrait_1080x1920.mp4",
+    "keyframes": [
+      "E:\\GrowthStudio\\exports\\keyframes\\app_showcase_portrait_1080x1920_start.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\app_showcase_portrait_1080x1920_mid.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\app_showcase_portrait_1080x1920_end.jpg"
+    ]
+  },
+  {
+    "id": "export-4",
+    "name": "app_showcase_landscape_1920x1080",
+    "description": "App Showcase (CloudPulse Desktop) in Landscape 1920x1080 @ 30 FPS",
+    "targetId": "landscape",
+    "expected": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "aspectRatio": "16:9"
+    },
+    "probe": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "duration": 7.5,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "fileSize": 844473
+    },
+    "renderTimeSeconds": 36.5,
+    "outputPath": "E:\\GrowthStudio\\exports\\app_showcase_landscape_1920x1080.mp4",
+    "keyframes": [
+      "E:\\GrowthStudio\\exports\\keyframes\\app_showcase_landscape_1920x1080_start.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\app_showcase_landscape_1920x1080_mid.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\app_showcase_landscape_1920x1080_end.jpg"
+    ]
+  },
+  {
+    "id": "export-5",
+    "name": "guided_product_story_portrait_1080x1920",
+    "description": "Guided Product Story in Portrait 1080x1920 @ 30 FPS",
+    "targetId": "portrait",
+    "expected": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "aspectRatio": "9:16"
+    },
+    "probe": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration": 12,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "fileSize": 1632626
+    },
+    "renderTimeSeconds": 45.9,
+    "outputPath": "E:\\GrowthStudio\\exports\\guided_product_story_portrait_1080x1920.mp4",
+    "keyframes": [
+      "E:\\GrowthStudio\\exports\\keyframes\\guided_product_story_portrait_1080x1920_start.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\guided_product_story_portrait_1080x1920_mid.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\guided_product_story_portrait_1080x1920_end.jpg"
+    ]
+  },
+  {
+    "id": "export-6",
+    "name": "guided_product_story_landscape_1920x1080",
+    "description": "Guided Product Story in Landscape 1920x1080 @ 30 FPS",
+    "targetId": "landscape",
+    "expected": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "aspectRatio": "16:9"
+    },
+    "probe": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "duration": 12,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "fileSize": 1606560
+    },
+    "renderTimeSeconds": 52.6,
+    "outputPath": "E:\\GrowthStudio\\exports\\guided_product_story_landscape_1920x1080.mp4",
+    "keyframes": [
+      "E:\\GrowthStudio\\exports\\keyframes\\guided_product_story_landscape_1920x1080_start.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\guided_product_story_landscape_1920x1080_mid.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\guided_product_story_landscape_1920x1080_end.jpg"
+    ]
+  },
+  {
+    "id": "export-7",
+    "name": "reference_guided_story_4x5_25fps_short",
+    "description": "Reference Standard Hero: DukanBot Guided Story 4:5 @ 25 FPS (~48s)",
+    "targetId": "portrait_4_5",
+    "expected": {
+      "width": 1080,
+      "height": 1350,
+      "fps": 25,
+      "aspectRatio": "4:5"
+    },
+    "probe": {
+      "width": 1080,
+      "height": 1350,
+      "fps": 25,
+      "duration": 38,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "fileSize": 4103309
+    },
+    "renderTimeSeconds": 95.7,
+    "outputPath": "E:\\GrowthStudio\\exports\\reference_guided_story_4x5_25fps_short.mp4",
+    "keyframes": [
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_short_start.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_short_mid.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_short_end.jpg"
+    ]
+  },
+  {
+    "id": "export-8",
+    "name": "reference_guided_story_4x5_25fps_long_walkthrough",
+    "description": "Reference Long Walkthrough Stress Test: 8 Chapters 4:5 @ 25 FPS (642s / 10m42s)",
+    "targetId": "portrait_4_5",
+    "expected": {
+      "width": 1080,
+      "height": 1350,
+      "fps": 25,
+      "aspectRatio": "4:5"
+    },
+    "probe": {
+      "width": 1080,
+      "height": 1350,
+      "fps": 25,
+      "duration": 642,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "fileSize": 23236948
+    },
+    "renderTimeSeconds": 849.1,
+    "outputPath": "E:\\GrowthStudio\\exports\\reference_guided_story_4x5_25fps_long_walkthrough.mp4",
+    "keyframes": [
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_start.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_mid.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_end.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_ch1_30s.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_ch2_110s.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_ch3_190s.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_ch4_260s.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_ch5_340s.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_ch6_420s.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_ch7_510s.jpg",
+      "E:\\GrowthStudio\\exports\\keyframes\\reference_guided_story_4x5_25fps_long_walkthrough_ch8_600s.jpg"
+    ]
+  }
+]

@@ -24,6 +24,27 @@ export function getChromePath() {
   throw new Error('No local Chrome or Chromium installation found.');
 }
 
+/**
+ * Robustly kills a child process tree on Windows and Unix.
+ */
+export function killProcessTree(pid) {
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    try {
+      const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F']);
+      killer.unref();
+    } catch (_) {}
+  } else {
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch (_) {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch (_) {}
+    }
+  }
+}
+
 export function probeMedia(filePath) {
   return new Promise((resolve, reject) => {
     const ffprobe = spawn('ffprobe', [
@@ -83,17 +104,35 @@ export async function renderVideo({
   outputPath,
   audioPath = null,
   audioConfig = {},
+  tempParentDir = null,
+  signal = null,
+  frameFormat = 'png',
   onProgress = () => {}
 }) {
   const width = target.width;
   const height = target.height;
   const fps = target.fps || 30;
 
+  // Determine scratch directory: prefer E:\GrowthStudio\renders on Windows, never default to C: temp if E: exists
+  let rendersRoot = tempParentDir;
+  if (!rendersRoot) {
+    if (process.platform === 'win32' && fs.existsSync('E:\\GrowthStudio')) {
+      rendersRoot = 'E:\\GrowthStudio\\renders';
+    } else {
+      rendersRoot = os.tmpdir();
+    }
+  }
+
+  if (!fs.existsSync(rendersRoot)) {
+    fs.mkdirSync(rendersRoot, { recursive: true });
+  }
+
   const chromePath = getChromePath();
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kinetic-render-'));
+  const tempDir = fs.mkdtempSync(path.join(rendersRoot, 'kinetic-render-'));
   const tempHtmlPath = path.join(tempDir, 'composition.html');
   fs.writeFileSync(tempHtmlPath, compositionHtml, 'utf8');
 
+  // Launch local headless Chromium
   const browser = await puppeteer.launch({
     executablePath: chromePath,
     headless: true,
@@ -113,15 +152,17 @@ export async function renderVideo({
   const page = await browser.newPage();
   await page.setViewport({ width, height, deviceScaleFactor: 1 });
 
-  // Load the composition HTML locally
+  // Load composition HTML
   await page.goto(`file://${tempHtmlPath}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__READY_FOR_RENDER__ === true, { timeout: 10000 });
+  await page.waitForFunction(() => window.__READY_FOR_RENDER__ === true, { timeout: 15000 });
+
+  const isJpeg = frameFormat === 'jpeg' || frameFormat === 'jpg';
 
   // Prepare FFmpeg command
   const ffmpegArgs = [
     '-y',
     '-f', 'image2pipe',
-    '-vcodec', 'png',
+    '-vcodec', isJpeg ? 'mjpeg' : 'png',
     '-r', String(fps),
     '-i', '-'
   ];
@@ -171,25 +212,67 @@ export async function renderVideo({
     ffmpegStderr += data.toString();
   });
 
+  let ffmpegDone = false;
+  let ffmpegError = null;
+
   const ffmpegDonePromise = new Promise((resolve, reject) => {
     ffmpeg.on('close', code => {
-      if (code === 0) resolve();
+      ffmpegDone = true;
+      if (code === 0 || isCancelled || signal?.aborted) resolve();
       else reject(new Error(`FFmpeg failed with exit code ${code}: ${ffmpegStderr}`));
     });
-    ffmpeg.on('error', reject);
+    ffmpeg.on('error', err => {
+      ffmpegError = err;
+      if (isCancelled || signal?.aborted) resolve();
+      else reject(err);
+    });
   });
+
+  // Handle cancellation signal
+  let isCancelled = false;
+  const abortHandler = () => {
+    isCancelled = true;
+    killProcessTree(ffmpeg.pid);
+    try { ffmpeg.stdin.destroy(); } catch (_) {}
+    try { browser.close(); } catch (_) {}
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
+    if (fs.existsSync(outputPath)) {
+      try { fs.unlinkSync(outputPath); } catch (_) {}
+    }
+  };
+
+  if (signal) {
+    if (signal.aborted) {
+      abortHandler();
+      const err = new Error('Render cancelled prior to start');
+      err.name = 'AbortError';
+      throw err;
+    }
+    signal.addEventListener('abort', abortHandler, { once: true });
+  }
 
   // Render loop
   try {
     for (let f = 0; f < totalFrames; f++) {
+      if (isCancelled || signal?.aborted) {
+        const err = new Error('Render job cancelled by user');
+        err.name = 'AbortError';
+        throw err;
+      }
+
       await page.evaluate(frameIndex => {
         window.seekToFrame(frameIndex);
       }, f);
 
-      const frameBuffer = await page.screenshot({
-        type: 'png',
-        optimizeForSpeed: true
-      });
+      const frameBuffer = await page.screenshot(
+        isJpeg ? { type: 'jpeg', quality: 92 } : { type: 'png', optimizeForSpeed: true }
+      );
+
+      if (isCancelled || signal?.aborted) {
+        const err = new Error('Render job cancelled by user');
+        err.name = 'AbortError';
+        throw err;
+      }
 
       const canWrite = ffmpeg.stdin.write(frameBuffer);
       if (!canWrite) {
@@ -208,8 +291,24 @@ export async function renderVideo({
 
     ffmpeg.stdin.end();
     await ffmpegDonePromise;
+  } catch (err) {
+    killProcessTree(ffmpeg.pid);
+    if (fs.existsSync(outputPath) && (isCancelled || signal?.aborted)) {
+      try { fs.unlinkSync(outputPath); } catch (_) {}
+    }
+    if (isCancelled || signal?.aborted) {
+      const cancelErr = new Error('Render job cancelled by user');
+      cancelErr.name = 'AbortError';
+      throw cancelErr;
+    }
+    throw err;
   } finally {
-    await browser.close();
+    if (signal) {
+      signal.removeEventListener('abort', abortHandler);
+    }
+    try {
+      await browser.close();
+    } catch (_) {}
     try {
       fs.rmSync(tempDir, { recursive: true, force: true });
     } catch (_) {}

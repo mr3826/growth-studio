@@ -1,10 +1,22 @@
-import { Project, PreflightReport, RenderJob } from './types';
+import { Project, PreflightReport, RenderJob, StarterTemplate } from './types';
 
 const API_BASE = '/api';
 
 export async function checkHealth() {
   const res = await fetch(`${API_BASE}/health`);
   if (!res.ok) throw new Error('Health check failed');
+  return res.json();
+}
+
+export async function fetchTemplates() {
+  const res = await fetch(`${API_BASE}/templates`);
+  if (!res.ok) throw new Error('Failed to fetch templates');
+  return res.json();
+}
+
+export async function fetchStarters(): Promise<StarterTemplate[]> {
+  const res = await fetch(`${API_BASE}/starters`);
+  if (!res.ok) throw new Error('Failed to fetch starter templates');
   return res.json();
 }
 
@@ -20,7 +32,7 @@ export async function fetchProject(id: string): Promise<Project> {
   return res.json();
 }
 
-export async function createProject(payload: { name?: string; language?: string; preset?: string; templateId?: string }): Promise<Project> {
+export async function createProject(payload: { name?: string; language?: string; preset?: string; starter?: string; templateId?: string }): Promise<Project> {
   const res = await fetch(`${API_BASE}/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -81,6 +93,14 @@ export async function queueRender(projectId: string, targetId: string): Promise<
 export async function fetchRenderJob(jobId: string): Promise<RenderJob> {
   const res = await fetch(`${API_BASE}/renders/${jobId}`);
   if (!res.ok) throw new Error('Failed to fetch render job');
+  return res.json();
+}
+
+export async function cancelRender(jobId: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/renders/${jobId}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) throw new Error('Failed to cancel render job');
   return res.json();
 }
 

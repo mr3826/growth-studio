@@ -1,0 +1,12 @@
+{
+  "id": "app_showcase",
+  "version": "1.0.0",
+  "name": "App & Product Showcase",
+  "description": "Dedicated UI demonstration template showcasing mobile apps and web products with clean device framing, focus zoom, pan, screenshot layers, and pinpoint callout annotations.",
+  "sceneKinds": ["kinetic_text", "ui_demo", "feature", "stat", "cta"],
+  "supportedTargets": ["portrait_4_5", "portrait", "landscape"],
+  "requiredInputs": ["brand.name", "creative.keyMessage", "creative.cta.label"],
+  "optionalAssets": ["logo", "image", "music"],
+  "defaultScenes": ["hook", "app_demo", "stat", "feature_zoom", "cta"],
+  "motionPresets": ["scale_pop", "device_float", "slide_left", "slide_right", "mask_reveal", "stagger_words"]
+}

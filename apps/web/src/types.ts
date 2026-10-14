@@ -19,6 +19,7 @@ export interface Project {
     painPoint?: string;
     keyMessage: string;
     tone: string;
+    languageStyle?: string;
     cta: {
       label: string;
       destination: string;
@@ -57,6 +58,8 @@ export interface Project {
   }>;
   scenes: Array<{
     id: string;
+    chapterNumber?: number;
+    chapterTitle?: string;
     kind: string;
     durationSeconds: number;
     eyebrow?: string;
@@ -64,9 +67,19 @@ export interface Project {
     subheadline?: string;
     body?: string;
     highlightWords?: string[];
+    statValue?: string;
+    statLabel?: string;
+    badge?: string;
     layout?: string;
     deviceFrame?: string;
     mediaAssetIds?: string[];
+    callouts?: Array<{
+      label: string;
+      x?: number;
+      y?: number;
+      placement?: string;
+      delaySeconds?: number;
+    }>;
     ctaLabel?: string;
     ctaDestination?: string;
     motion?: {
@@ -112,6 +125,20 @@ export interface PreflightReport {
   errors: string[];
   warnings: string[];
   totalDuration: number;
+  storage?: {
+    root: string;
+    isEDrive: boolean;
+    freeGB: number;
+    estimatedNeededGB?: number;
+  };
+}
+
+export interface StarterTemplate {
+  id: string;
+  name: string;
+  description: string;
+  templateId: string;
+  language: string;
 }
 
 export interface RenderJob {

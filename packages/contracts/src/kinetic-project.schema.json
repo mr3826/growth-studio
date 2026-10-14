@@ -64,6 +64,8 @@
           "type": "string",
           "enum": [
             "bold_kinetic",
+            "guided_product_story",
+            "app_showcase",
             "problem_solution",
             "ui_showcase",
             "feature_stack",
@@ -393,7 +395,8 @@
             "enum": [
               "portrait",
               "landscape",
-              "square"
+              "square",
+              "portrait_4_5"
             ]
           },
           "width": {
@@ -426,6 +429,9 @@
               "crop",
               "letterbox"
             ]
+          },
+          "aspectRatio": {
+            "type": "string"
           }
         },
         "required": [
@@ -735,10 +741,58 @@
           "notes": {
             "type": "string"
           },
+          "chapterNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "chapterTitle": {
+            "type": "string"
+          },
+          "badge": {
+            "type": "string"
+          },
+          "statValue": {
+            "type": "string"
+          },
+          "statLabel": {
+            "type": "string"
+          },
+          "callouts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string" },
+                "x": { "type": "number", "minimum": 0, "maximum": 1 },
+                "y": { "type": "number", "minimum": 0, "maximum": 1 },
+                "placement": { "type": "string", "enum": ["top", "bottom", "left", "right"] },
+                "delaySeconds": { "type": "number", "minimum": 0 }
+              },
+              "required": ["label"]
+            }
+          },
           "layoutOverrides": {
             "type": "object",
             "properties": {
               "portrait": {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string"
+                  },
+                  "fontSizeScale": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 2
+                  },
+                  "textAlignment": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "portrait_4_5": {
                 "type": "object",
                 "properties": {
                   "layout": {

@@ -1,0 +1,12 @@
+{
+  "id": "guided_product_story",
+  "version": "1.0.0",
+  "name": "Guided Product Story (Problem → Solution)",
+  "description": "Reference-inspired editorial storytelling with Bengali & English kinetic typography, highlighted words, multi-chapter pacing, layered phone/browser mockups, animated callouts, and 4:5 reflow.",
+  "sceneKinds": ["kinetic_text", "problem", "solution", "ui_demo", "feature", "stat", "testimonial", "cta", "outro"],
+  "supportedTargets": ["portrait_4_5", "portrait", "landscape"],
+  "requiredInputs": ["brand.name", "creative.keyMessage", "creative.cta.label"],
+  "optionalAssets": ["logo", "image", "music", "voiceover"],
+  "defaultScenes": ["hook", "pain", "reveal", "phone_demo", "dashboard_demo", "stat_beat", "trust", "cta"],
+  "motionPresets": ["stagger_words", "highlight_sweep", "fade_up", "slide_left", "slide_right", "scale_pop", "mask_reveal", "device_float"]
+}
