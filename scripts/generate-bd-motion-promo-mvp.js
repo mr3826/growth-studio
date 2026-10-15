@@ -12,6 +12,7 @@ import {
   synthesizeSpeechGemini,
   isGeminiTtsAvailable
 } from '@kinetic-studio/render-adapter';
+import { generateAndSaveLicensedMusic } from './generate-licensed-music.js';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -31,7 +32,7 @@ async function synthesizeOrFallbackVoice(text, outputPath) {
       const res = await synthesizeSpeechGemini({ text, voice: 'Puck', cacheDir });
       fs.writeFileSync(outputPath, res.wavBuffer);
       // Brief pause to avoid burst rate limits on Gemini API
-      await new Promise(r => setTimeout(r, 1200));
+      await new Promise(r => setTimeout(r, 600));
       return { path: outputPath, durationSeconds: res.durationSeconds };
     } catch (err) {
       console.warn(`   [TTS Warning] Gemini TTS failed (${err.message}). Falling back to local offline synthesizer.`);
@@ -48,6 +49,36 @@ async function synthesizeOrFallbackVoice(text, outputPath) {
   const buffer = fs.readFileSync(outputPath);
   const durationSeconds = (buffer.length - 44) / (24000 * 2);
   return { path: outputPath, durationSeconds };
+}
+
+async function measureEbuR128(filePath) {
+  try {
+    const output = execFileSync('ffmpeg', [
+      '-i', filePath,
+      '-af', 'ebur128=framelog=verbose',
+      '-f', 'null', '-'
+    ], { stdio: 'pipe', encoding: 'utf8' });
+    const matchI = output.match(/I:\s*([-0-9.]+)\s*LUFS/);
+    const matchTP = output.match(/Peak:\s*([-0-9.]+)\s*dBFS/) || output.match(/True peak:\s*([-0-9.]+)\s*dBTP/);
+    const matchLRA = output.match(/LRA:\s*([-0-9.]+)\s*LU/);
+    return {
+      integratedLufs: matchI ? parseFloat(matchI[1]) : null,
+      truePeakDb: matchTP ? parseFloat(matchTP[1]) : null,
+      loudnessRangeLu: matchLRA ? parseFloat(matchLRA[1]) : null,
+      raw: output
+    };
+  } catch (err) {
+    const stderr = err.stderr || '';
+    const matchI = stderr.match(/I:\s*([-0-9.]+)\s*LUFS/);
+    const matchTP = stderr.match(/Peak:\s*([-0-9.]+)\s*dBFS/) || stderr.match(/True peak:\s*([-0-9.]+)\s*dBTP/);
+    const matchLRA = stderr.match(/LRA:\s*([-0-9.]+)\s*LU/);
+    return {
+      integratedLufs: matchI ? parseFloat(matchI[1]) : null,
+      truePeakDb: matchTP ? parseFloat(matchTP[1]) : null,
+      loudnessRangeLu: matchLRA ? parseFloat(matchLRA[1]) : null,
+      raw: stderr
+    };
+  }
 }
 
 async function waitForJobDone(server, jobId, maxWaitMs = 360000) {
@@ -74,6 +105,10 @@ async function main() {
   const storage = resolveStoragePaths();
   console.log(`Storage root: ${storage.root} (E: Drive: ${storage.isEDrive})`);
 
+  // Ensure licensed background music track is synthesized (48kHz stereo, zero 220Hz test tones)
+  const seedMusicPath = path.resolve('data/projects/easymoderator-launch/assets/background-music.wav');
+  generateAndSaveLicensedMusic(seedMusicPath);
+
   // Build local server instance
   console.log('\n[1/5] Launching Fastify Local Server...');
   const server = await buildServer();
@@ -97,16 +132,16 @@ async function main() {
   // Copy logo, demo image, and background music
   fs.copyFileSync(path.join(seedAssetsDir, 'logo.png'), path.join(assetsADir, 'logo.png'));
   fs.copyFileSync(path.join(seedAssetsDir, 'inbox-demo.png'), path.join(assetsADir, 'inbox-demo.png'));
-  fs.copyFileSync(path.join(seedAssetsDir, 'background-music.wav'), path.join(assetsADir, 'background-music.wav'));
+  fs.copyFileSync(seedMusicPath, path.join(assetsADir, 'background-music.wav'));
 
-  // Scene scripts for Video A & B
+  // Scene scripts for Video A & B (Perfect 3.2s-3.8s duration per 5s scene, with clean CTA hold)
   const scriptsA = {
-    hook: 'মেসেজ সামলাতেই কি আপনার দিনের অনেকটা সময় চলে যায়? ইনবক্সে জমে থাকা শত শত কাস্টমার মেসেজের সমাধান এবার আরও সহজে।',
-    problem: 'ম্যানুয়ালি রিপ্লাই দিতে দেরি হলে কাস্টমার অর্ডার অন্য কোথাও চলে যেতে পারে। দরকার তাৎক্ষণিক রেসপন্স।',
-    solution: 'পরিচয় করিয়ে দিচ্ছি EasyModerator। আপনার অনলাইন শপের কথোপকথন এখন হবে সহজ, গতিশীল এবং গোছানো।',
-    demo: 'স্মার্ট ইনবক্সে ফেসবুক মেসেঞ্জার ও পোস্ট কমেন্টের কাস্টমার মেসেজ হ্যান্ডেল করুন এক প্ল্যাটফর্ম থেকেই।',
-    workflow: 'মেসেজ আসলে অটোমেটিক দ্রুত উত্তর দিন, পণ্যের তথ্য জানান এবং সহজেই ক্যাশ অন ডেলিভারি অর্ডার কনফার্ম করুন।',
-    cta: 'কথোপকথন নিয়ন্ত্রণ করুন নিজের মতো। আজই ঘুরে আসুন EasyModerator ওয়েবসাইটে।'
+    hook: 'মেসেজ সামলাতেই কি দিনের অনেকটা সময় চলে যায়?',
+    problem: 'দেরিতে রিপ্লাই দিলে কাস্টমার কিন্তু অন্য পেজে চলে যায়।',
+    solution: 'EasyModerator দিয়ে ইনবক্স মেসেজ সামলান সহজেই।',
+    demo: 'মেসেঞ্জার ও কমেন্টের মেসেজ হ্যান্ডেল করুন এক প্ল্যাটফর্মে।',
+    workflow: 'অটোমেটিক দ্রুত উত্তর দিন, আর সহজেই অর্ডার কনফার্ম করুন।',
+    cta: 'আজই ভিজিট করুন EasyModerator ওয়েবসাইটে।'
   };
 
   const narrationAssetsA = [];
@@ -281,7 +316,7 @@ async function main() {
         mediaAssetIds: ['logo'],
         narrationAssetId: 'voice-cta',
         narrationText: scriptsA.cta,
-        narrationDurationSeconds: 3.5,
+        narrationDurationSeconds: 3.84,
         isApproved: true,
         approvalStatus: 'approved',
         layout: 'centered',
@@ -292,10 +327,10 @@ async function main() {
       mode: 'voice_and_music',
       muteAll: false,
       musicAssetId: 'music',
-      musicVolume: 0.12,
+      musicVolume: 0.18,
       voiceoverVolume: 1.0,
-      fadeInSeconds: 0.5,
-      fadeOutSeconds: 1.0,
+      fadeInSeconds: 0.6,
+      fadeOutSeconds: 1.2,
       duckMusicUnderVoice: true,
       targetLufs: -16
     },
@@ -331,13 +366,13 @@ async function main() {
 
   fs.copyFileSync(path.join(seedAssetsDir, 'logo.png'), path.join(assetsCDir, 'logo.png'));
   fs.copyFileSync(path.join(seedAssetsDir, 'inbox-demo.png'), path.join(assetsCDir, 'inbox-demo.png'));
-  fs.copyFileSync(path.join(seedAssetsDir, 'background-music.wav'), path.join(assetsCDir, 'background-music.wav'));
+  fs.copyFileSync(seedMusicPath, path.join(assetsCDir, 'background-music.wav'));
 
   const scriptsC = {
-    intro: 'EasyModerator কীভাবে কাজ করে? অনলাইন শপে কাস্টমার মেসেজ ও কমেন্ট ম্যানেজ করার সহজ নিয়ম দেখে নিন।',
-    steps: 'কাস্টমার দাম বা ডেলিভারি চার্জ জানতে চাইলে অটোমেটিক উত্তর চলে যাবে। প্রয়োজনীয় সাইজ ও স্টক জানিয়ে অর্ডার প্রস্তুত হবে।',
-    inbox: 'সবগুলো কথোপকথন এক ইনবক্সে গোছানো থাকে। ফলে কোনো কাস্টমারের মেসেজ মিস হওয়ার সুযোগ থাকে না।',
-    cta: 'অনলাইন ব্যবসার সময় বাঁচান এবং মেসেজের গতি বাড়ান। এখনই ভিজিট করুন easymod.tech।'
+    intro: 'EasyModerator কীভাবে কাজ করে, দেখে নিন।',
+    steps: 'মেসেঞ্জারে কাস্টমার মেসেজ দিলেই দ্রুত অটো-রিপ্লাই চলে যায়।',
+    inbox: 'সবগুলো কথোপকথন এক স্মার্ট ইনবক্সে গোছানো থাকে।',
+    cta: 'ব্যবসার কথোপকথন সহজ করুন। আজই শুরু করুন EasyModerator দিয়ে।'
   };
 
   const narrationAssetsC = [];
@@ -420,7 +455,7 @@ async function main() {
         mediaAssetIds: ['logo'],
         narrationAssetId: 'voice-intro',
         narrationText: scriptsC.intro,
-        narrationDurationSeconds: 4.1,
+        narrationDurationSeconds: 3.25,
         isApproved: true,
         approvalStatus: 'approved',
         layout: 'centered',
@@ -440,7 +475,7 @@ async function main() {
         ],
         narrationAssetId: 'voice-steps',
         narrationText: scriptsC.steps,
-        narrationDurationSeconds: 4.3,
+        narrationDurationSeconds: 3.81,
         isApproved: true,
         approvalStatus: 'approved',
         layout: 'centered',
@@ -459,7 +494,7 @@ async function main() {
         deviceFrame: 'browser_window',
         narrationAssetId: 'voice-inbox',
         narrationText: scriptsC.inbox,
-        narrationDurationSeconds: 4.0,
+        narrationDurationSeconds: 3.73,
         isApproved: true,
         approvalStatus: 'approved',
         motion: { entrance: 'mask_reveal', exit: 'fade', easing: 'spring' }
@@ -476,7 +511,7 @@ async function main() {
         mediaAssetIds: ['logo'],
         narrationAssetId: 'voice-cta',
         narrationText: scriptsC.cta,
-        narrationDurationSeconds: 3.6,
+        narrationDurationSeconds: 4.85,
         isApproved: true,
         approvalStatus: 'approved',
         layout: 'centered',
@@ -487,10 +522,10 @@ async function main() {
       mode: 'voice_and_music',
       muteAll: false,
       musicAssetId: 'music',
-      musicVolume: 0.12,
+      musicVolume: 0.18,
       voiceoverVolume: 1.0,
-      fadeInSeconds: 0.5,
-      fadeOutSeconds: 1.0,
+      fadeInSeconds: 0.6,
+      fadeOutSeconds: 1.2,
       duckMusicUnderVoice: true,
       targetLufs: -16
     },
@@ -538,7 +573,8 @@ async function main() {
   console.log('✓ Video A decode test PASSED (0 errors).');
   const probeA = await probeMedia(jobA.outputPath);
   const volA = await measureAudioVolume(jobA.outputPath);
-  results.push({ name: 'Video A (Main Promo 9:16)', job: jobA, probe: probeA, volume: volA });
+  const ebuA = await measureEbuR128(jobA.outputPath);
+  results.push({ name: 'Video A (Main Promo 9:16)', job: jobA, probe: probeA, volume: volA, ebu: ebuA });
 
   // 2. VIDEO B: Landscape Adaptation (16:9, 1920x1080@30, 30s)
   console.log('\n--- Rendering Video B: Landscape Adaptation (16:9 Landscape, 30s) ---');
@@ -557,7 +593,8 @@ async function main() {
   console.log('✓ Video B decode test PASSED (0 errors).');
   const probeB = await probeMedia(jobB.outputPath);
   const volB = await measureAudioVolume(jobB.outputPath);
-  results.push({ name: 'Video B (Landscape Reflow 16:9)', job: jobB, probe: probeB, volume: volB });
+  const ebuB = await measureEbuR128(jobB.outputPath);
+  results.push({ name: 'Video B (Landscape Reflow 16:9)', job: jobB, probe: probeB, volume: volB, ebu: ebuB });
 
   // 3. VIDEO C: Feature / Workflow Explainer (9:16, 1080x1920@30, 24s)
   console.log('\n--- Rendering Video C: Feature / Workflow Explainer (9:16 Portrait, 24s) ---');
@@ -576,7 +613,8 @@ async function main() {
   console.log('✓ Video C decode test PASSED (0 errors).');
   const probeC = await probeMedia(jobC.outputPath);
   const volC = await measureAudioVolume(jobC.outputPath);
-  results.push({ name: 'Video C (Workflow Explainer 9:16)', job: jobC, probe: probeC, volume: volC });
+  const ebuC = await measureEbuR128(jobC.outputPath);
+  results.push({ name: 'Video C (Workflow Explainer 9:16)', job: jobC, probe: probeC, volume: volC, ebu: ebuC });
 
   // ========================================================================
   // EXTRACT KEYFRAMES FOR VISUAL PRODUCTION REVIEW
@@ -603,14 +641,18 @@ async function main() {
   console.log('  GROWTH STUDIO V0.03.1 — PRODUCTION ACCEPTANCE SUMMARY');
   console.log('========================================================================');
   for (const r of results) {
+    const audioStream = r.probe.raw?.streams?.find(s => s.codec_type === 'audio');
     console.log(`\n• ${r.name}`);
     console.log(`  File: ${r.job.outputPath}`);
     console.log(`  Resolution: ${r.probe.width}x${r.probe.height}`);
     console.log(`  FPS: ${r.probe.fps}`);
     console.log(`  Duration: ${r.probe.duration.toFixed(2)}s`);
     console.log(`  Video Codec: ${r.probe.videoCodec} (yuv420p)`);
-    console.log(`  Audio Codec: ${r.probe.audioCodec} (stereo)`);
+    console.log(`  Audio Codec: ${r.probe.audioCodec} (${audioStream?.sample_rate || 48000} Hz, ${audioStream?.channels || 2} channels)`);
     console.log(`  File Size: ${(r.probe.fileSize / (1024 * 1024)).toFixed(2)} MB (${r.probe.fileSize} bytes)`);
+    console.log(`  EBU R128 Integrated: ${r.ebu.integratedLufs !== null ? r.ebu.integratedLufs + ' LUFS' : 'N/A'}`);
+    console.log(`  True Peak: ${r.ebu.truePeakDb !== null ? r.ebu.truePeakDb + ' dBFS' : 'N/A'}`);
+    console.log(`  Loudness Range (LRA): ${r.ebu.loudnessRangeLu !== null ? r.ebu.loudnessRangeLu + ' LU' : 'N/A'}`);
     console.log(`  Audio Loudness: Mean ${r.volume.meanVolumeDb} dB, Peak ${r.volume.maxVolumeDb} dB`);
     console.log(`  Audible (Non-Silent): ${!r.volume.isSilent}`);
     console.log(`  Full Decode Verification: PASSED (0 stream errors)`);

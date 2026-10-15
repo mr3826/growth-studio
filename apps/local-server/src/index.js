@@ -1323,15 +1323,21 @@ async function executeRenderJob(job, project, signal = null) {
         if (narrAsset && narrAsset.file) {
           const narrPath = path.join(PROJECTS_DIR, job.projectId, narrAsset.file);
           if (fs.existsSync(narrPath)) {
+            const narrDur = Number(scene.narrationDurationSeconds || narrAsset.durationSeconds || 0);
+            const voiceStart = sceneStartTime + 0.15;
+            // Cap duration so narration never bleeds into next scene
+            const safeMaxDur = Math.max(0.5, sceneDur - 0.35);
+            const actualDur = narrDur > 0 ? Math.min(narrDur, safeMaxDur) : safeMaxDur;
+
             audioTracks.push({
               id: `narration-${scene.id}`,
               type: 'voice',
               path: narrPath,
-              startTime: sceneStartTime,
-              duration: scene.narrationDurationSeconds || narrAsset.durationSeconds,
-              volume: project.audio?.voiceVolume ?? 1.0
+              startTime: voiceStart,
+              duration: actualDur,
+              volume: project.audio?.voiceVolume ?? project.audio?.voiceoverVolume ?? 1.0
             });
-            job.logs.push(`Added scene narration (${scene.id}): ${narrAsset.file} at ${sceneStartTime.toFixed(2)}s`);
+            job.logs.push(`Added scene narration (${scene.id}): ${narrAsset.file} at ${voiceStart.toFixed(2)}s (duration ${actualDur.toFixed(2)}s, scene budget ${sceneDur}s)`);
           }
         }
       }
@@ -1350,14 +1356,15 @@ async function executeRenderJob(job, project, signal = null) {
             path: clipPath,
             startTime: clip.startTime || 0,
             duration: clip.duration,
-            volume: clip.volume ?? (clip.type === 'voice' ? 1.0 : 0.25)
+            volume: clip.volume ?? (clip.type === 'voice' ? 1.0 : 0.18)
           });
         }
       }
     }
 
-    // 3. Background music
-    if (project.audio?.musicAssetId) {
+    // 3. Background music (suppressed when voice-only is requested)
+    const isVoiceOnly = project.audio?.mode === 'voice_only' || project.audio?.mode === 'voice' || project.audio?.mode === 'generated_voice';
+    if (!isVoiceOnly && project.audio?.musicAssetId) {
       const audioAsset = (project.assets || []).find(a => a.id === project.audio.musicAssetId);
       if (audioAsset && audioAsset.file) {
         let candidateAudio = path.join(PROJECTS_DIR, job.projectId, audioAsset.file);
