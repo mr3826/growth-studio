@@ -221,7 +221,8 @@ function tokenizeHeadline(text, highlightWords = []) {
     });
 
     const spanClass = isHighlighted ? 'kinetic-word highlighted' : 'kinetic-word';
-    const span = `<span class="${spanClass}" data-word-index="${wordIndex}">${escapeHtml(token)}</span>`;
+    const sweep = isHighlighted ? '<span class="highlight-sweep"></span>' : '';
+    const span = `<span class="${spanClass}" data-word-index="${wordIndex}">${escapeHtml(token)}${sweep}</span>`;
     wordIndex++;
     return span;
   }).join('');
@@ -480,6 +481,39 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
       ` : '';
     }
 
+    // Connected Workflow Cards & Comparison Cards from bulletPoints
+    let bulletPointsBlock = '';
+    if (Array.isArray(s.bulletPoints) && s.bulletPoints.length > 0) {
+      const isComparison = s.kind === 'problem' || s.layout === 'comparison' || s.layout === 'split_left';
+      if (isComparison && s.bulletPoints.length === 2) {
+        bulletPointsBlock = `
+          <div class="comparison-cards-container">
+            <div class="comparison-card before-card">
+              <div class="comparison-badge before-badge">আগে: ম্যানুয়াল চ্যাট</div>
+              <p class="comparison-text">${escapeHtml(s.bulletPoints[0])}</p>
+            </div>
+            <div class="comparison-card after-card">
+              <div class="comparison-badge after-badge">EasyModerator দিয়ে</div>
+              <p class="comparison-text">${escapeHtml(s.bulletPoints[1])}</p>
+            </div>
+          </div>
+        `;
+      } else {
+        const bnDigits = ['১', '২', '৩', '৪', '৫', '৬'];
+        bulletPointsBlock = `
+          <div class="workflow-cards-container">
+            ${s.bulletPoints.map((pt, ptIdx) => `
+              <div class="workflow-card" data-step-index="${ptIdx}">
+                <div class="workflow-step-badge">${bnDigits[ptIdx] || (ptIdx + 1)}</div>
+                <div class="workflow-card-content">${escapeHtml(pt)}</div>
+                ${ptIdx < s.bulletPoints.length - 1 ? '<div class="workflow-step-connector"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>' : ''}
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+    }
+
     const demoDisclaimerBlock = s.claimDisclaimer
       ? `<div class="claim-disclaimer" aria-label="${escapeHtml(s.claimDisclaimer)}">${escapeHtml(s.claimDisclaimer)}</div>`
       : '';
@@ -493,6 +527,7 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
             ${s.headline ? `<h1 class="scene-headline">${tokenizedHeadline}</h1>` : ''}
             ${s.subheadline ? `<div class="scene-subheadline">${escapeHtml(s.subheadline)}</div>` : ''}
             ${statBlock}
+            ${bulletPointsBlock}
             ${demoDisclaimerBlock}
             ${s.body ? `<div class="scene-body">${escapeHtml(s.body)}</div>` : ''}
             ${ctaBlock}
@@ -1201,6 +1236,128 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
       border-radius: 100px;
       border: 1px solid ${isLightTheme ? 'rgba(24, 24, 27, 0.12)' : 'rgba(244, 195, 94, 0.25)'};
     }
+
+    /* Workflow & Connected Cards (Reference A & B Inspired) */
+    .workflow-cards-container {
+      display: flex;
+      flex-direction: column;
+      gap: calc(14px * var(--scale-factor));
+      width: 100%;
+      max-width: ${is4x5 ? '92%' : (isPortrait ? '92%' : '82%')};
+      margin: calc(14px * var(--scale-factor)) 0;
+    }
+    .workflow-card {
+      display: flex;
+      align-items: center;
+      gap: calc(16px * var(--scale-factor));
+      background: ${isLightTheme ? 'rgba(24, 24, 27, 0.05)' : 'rgba(23, 34, 59, 0.75)'};
+      backdrop-filter: blur(16px);
+      border: 1px solid ${isLightTheme ? 'rgba(24, 24, 27, 0.15)' : 'rgba(116, 96, 217, 0.35)'};
+      padding: calc(14px * var(--scale-factor)) calc(20px * var(--scale-factor));
+      border-radius: var(--radius);
+      box-shadow: 0 calc(8px * var(--scale-factor)) calc(24px * var(--scale-factor)) rgba(0, 0, 0, 0.3);
+      position: relative;
+      transition: all 0.25s ease-out;
+    }
+    .workflow-card.active-step {
+      border-color: var(--accent);
+      box-shadow: 0 0 calc(25px * var(--scale-factor)) rgba(244, 195, 94, 0.3);
+      background: ${isLightTheme ? 'rgba(204, 255, 0, 0.12)' : 'rgba(116, 96, 217, 0.3)'};
+    }
+    .workflow-step-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: calc(38px * var(--scale-factor));
+      height: calc(38px * var(--scale-factor));
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 800;
+      font-size: calc(18px * var(--scale-factor));
+      flex-shrink: 0;
+    }
+    .workflow-card-content {
+      font-size: calc(${is4x5 ? '24px' : (isPortrait ? '26px' : '28px')} * var(--scale-factor));
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.35;
+    }
+    .workflow-step-connector {
+      position: absolute;
+      bottom: calc(-16px * var(--scale-factor));
+      left: calc(28px * var(--scale-factor));
+      width: calc(20px * var(--scale-factor));
+      height: calc(16px * var(--scale-factor));
+      color: var(--accent);
+      opacity: 0.85;
+      z-index: 2;
+    }
+
+    /* Comparison Cards (Before vs After) */
+    .comparison-cards-container {
+      display: grid;
+      grid-template-columns: ${isPortrait ? '1fr' : '1fr 1fr'};
+      gap: calc(16px * var(--scale-factor));
+      width: 100%;
+      max-width: ${is4x5 ? '92%' : (isPortrait ? '92%' : '88%')};
+      margin: calc(16px * var(--scale-factor)) 0;
+    }
+    .comparison-card {
+      padding: calc(18px * var(--scale-factor));
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      gap: calc(10px * var(--scale-factor));
+      backdrop-filter: blur(12px);
+    }
+    .comparison-card.before-card {
+      background: rgba(225, 29, 72, 0.08);
+      border: 1px solid rgba(225, 29, 72, 0.32);
+    }
+    .comparison-card.after-card {
+      background: rgba(116, 96, 217, 0.18);
+      border: 1px solid rgba(244, 195, 94, 0.5);
+      box-shadow: 0 0 calc(25px * var(--scale-factor)) rgba(116, 96, 217, 0.3);
+    }
+    .comparison-badge {
+      display: inline-block;
+      align-self: flex-start;
+      font-size: calc(12px * var(--scale-factor));
+      font-weight: 800;
+      padding: 4px 12px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .before-badge {
+      background: rgba(225, 29, 72, 0.2);
+      color: #fb7185;
+      border: 1px solid rgba(225, 29, 72, 0.4);
+    }
+    .after-badge {
+      background: rgba(244, 195, 94, 0.2);
+      color: #f4c35e;
+      border: 1px solid rgba(244, 195, 94, 0.5);
+    }
+    .comparison-text {
+      font-size: calc(${is4x5 ? '22px' : (isPortrait ? '24px' : '26px')} * var(--scale-factor));
+      font-weight: 600;
+      line-height: 1.4;
+      color: var(--text);
+    }
+
+    /* Highlight Shimmer Sweep */
+    .highlight-sweep {
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+      transform: skewX(-20deg);
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -1388,6 +1545,33 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
               wSpan.style.opacity = '1';
               wSpan.style.transform = 'none';
             });
+
+            // Progressive workflow cards activation
+            const workflowCards = el.querySelectorAll('.workflow-card');
+            if (workflowCards.length > 0) {
+              const stepInterval = Math.max(0.35, (holdEnd - holdStart) / workflowCards.length);
+              workflowCards.forEach((cEl, cIdx) => {
+                const cTime = holdStart + cIdx * stepInterval;
+                if (localTime >= cTime) {
+                  cEl.classList.add('active-step');
+                  cEl.style.opacity = '1';
+                  cEl.style.transform = 'translateY(0)';
+                } else {
+                  cEl.classList.remove('active-step');
+                  cEl.style.opacity = '0.4';
+                  cEl.style.transform = 'translateY(10px)';
+                }
+              });
+            }
+
+            // Shimmer highlight sweep
+            const sweeps = el.querySelectorAll('.highlight-sweep');
+            if (sweeps.length > 0) {
+              const sweepProgress = clamp((localTime - holdStart) / Math.max(0.4, holdEnd - holdStart), 0, 1);
+              sweeps.forEach(sw => {
+                sw.style.left = (-50 + sweepProgress * 220) + '%';
+              });
+            }
           }
 
           el.style.opacity = String(opacity);
