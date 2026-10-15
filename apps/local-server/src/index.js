@@ -1288,10 +1288,10 @@ async function executeRenderJob(job, project, signal = null) {
   }
 
   // Resolve assets locally for offline Chrome rendering
-  const projectAssetsDir = path.join(PROJECTS_DIR, job.projectId, 'assets');
-  let assetBaseUrl = `file://${projectAssetsDir}/`;
+  const projectRootDir = path.join(PROJECTS_DIR, job.projectId);
+  let assetBaseUrl = `file://${projectRootDir}/`;
   if (process.platform === 'win32') {
-    assetBaseUrl = `file:///${projectAssetsDir.replace(/\\/g, '/')}/`;
+    assetBaseUrl = `file:///${projectRootDir.replace(/\\/g, '/')}/`;
   }
 
   job.status = 'rendering';

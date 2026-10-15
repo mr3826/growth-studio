@@ -340,7 +340,18 @@ export function compileComposition({ project, targetId = 'portrait', assetBaseUr
   // Build asset lookup map
   const assetMap = {};
   for (const a of (project.assets || [])) {
-    assetMap[a.id] = a.file ? `${assetBaseUrl}${a.file}` : '';
+    if (!a.file) {
+      assetMap[a.id] = '';
+    } else if (a.file.startsWith('data:') || a.file.startsWith('http://') || a.file.startsWith('https://') || a.file.startsWith('file://')) {
+      assetMap[a.id] = a.file;
+    } else {
+      let fileRel = a.file;
+      let baseUrl = assetBaseUrl || '';
+      if (baseUrl.endsWith('/assets/') && fileRel.startsWith('assets/')) {
+        fileRel = fileRel.replace(/^assets\//, '');
+      }
+      assetMap[a.id] = `${baseUrl}${fileRel}`;
+    }
   }
 
   // Pre-generate scene elements

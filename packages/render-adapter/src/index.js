@@ -307,7 +307,7 @@ export async function renderVideo({
       ffmpegArgs.push('-i', vClip.path);
       const streamIdx = nextStreamIdx++;
       const delayMs = Math.max(0, Math.round((vClip.startTime || 0) * 1000));
-      const vol = vClip.volume ?? (audioConfig.voiceVolume ?? 1.0);
+      const vol = vClip.volume ?? (audioConfig.voiceoverVolume ?? audioConfig.voiceVolume ?? 1.0);
       const label = `v_${streamIdx}`;
       filterSegments.push(`[${streamIdx}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,adelay=${delayMs}|${delayMs},volume=${vol}[${label}]`);
       voiceStreamLabels.push(`[${label}]`);
