@@ -1,81 +1,57 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveStoragePaths } from '../packages/contracts/src/index.js';
+import { GEMINI_TTS_MODEL, pcmToWav } from '../packages/render-adapter/src/index.js';
 
 async function testTts() {
   const apiKey = process.env.CONTENT_STUDIO_GEMINI;
-  if (!apiKey) {
-    console.error('No API key in process.env.CONTENT_STUDIO_GEMINI');
+  if (!apiKey?.trim()) {
+    console.error('CONTENT_STUDIO_GEMINI is not configured.');
+    process.exitCode = 2;
     return;
   }
 
-  const candidateModels = [
-    'gemini-2.5-flash-preview-tts',
-    'gemini-3.8-flash-tts',
-    'gemini-3.1-flash-tts-preview'
-  ];
-
-  for (const model of candidateModels) {
-    console.log(`\nTesting model: ${model}...`);
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const payload = {
-        contents: [
-          {
-            parts: [
-              {
-                text: 'কাস্টমার মেসেজ সামলাতে হিমশিম খাচ্ছেন? সমাধান আছে।'
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: 'Puck'
-              }
-            }
-          }
-        }
-      };
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      console.log(`Status: HTTP ${res.status} ${res.statusText}`);
-      if (!res.ok) {
-        const err = await res.text();
-        console.log(`Error body:`, err.slice(0, 300));
-        continue;
-      }
-
-      const data = await res.json();
-      const candidate = data.candidates?.[0];
-      const part = candidate?.content?.parts?.[0];
-      const inlineData = part?.inlineData;
-
-      if (inlineData?.data) {
-        const audioBuffer = Buffer.from(inlineData.data, 'base64');
-        console.log(`✓ Audio received! MIME type: ${inlineData.mimeType}, Byte length: ${audioBuffer.length}`);
-        const outDir = 'data/exports';
-        fs.mkdirSync(outDir, { recursive: true });
-        const outFile = path.join(outDir, `test-tts-bangla-${model.replace(/[^a-z0-9]/g, '_')}.wav`);
-        fs.writeFileSync(outFile, audioBuffer);
-        console.log(`Saved audio to ${outFile}`);
-        return { success: true, model, outFile, bytes: audioBuffer.length, mimeType: inlineData.mimeType };
-      } else {
-        console.log('No inlineData found in response parts:', JSON.stringify(data).slice(0, 300));
-      }
-    } catch (err) {
-      console.error(`Request exception for ${model}:`, err.message, 'Cause:', err.cause);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TTS_MODEL}:generateContent`;
+  const payload = {
+    contents: [{ role: 'user', parts: [{ text: 'আপনার পণ্যের বৈশিষ্ট্যগুলো দেখে নিন।' }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: { voiceConfig: { voice: 'Puck' } }
     }
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(45000)
+    });
+    if (!res.ok) {
+      console.error(`Gemini TTS failed with HTTP ${res.status}. Check provider access, quota, and network.`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const data = await res.json();
+    const inlineData = data.candidates?.[0]?.content?.parts?.find(part => part?.inlineData?.data)?.inlineData;
+    if (!inlineData?.data) {
+      console.error('Gemini TTS returned no audio.');
+      process.exitCode = 1;
+      return;
+    }
+
+    const audio = Buffer.from(inlineData.data, 'base64');
+    const wav = audio.subarray(0, 4).toString() === 'RIFF' ? audio : pcmToWav(audio);
+    const outputDir = resolveStoragePaths().exports;
+    fs.mkdirSync(outputDir, { recursive: true });
+    const outFile = path.join(outputDir, `test-tts-bangla-${GEMINI_TTS_MODEL}.wav`);
+    fs.writeFileSync(outFile, wav);
+    console.log(`Gemini TTS audio saved: ${outFile} (${wav.length} bytes, ${inlineData.mimeType || 'audio/wav'}).`);
+  } catch {
+    console.error('Gemini TTS request failed. Check provider access and local network status.');
+    process.exitCode = 1;
   }
 }
 
-testTts().then(res => {
-  console.log('\nFinal test result:', res);
-});
+testTts();

@@ -57,7 +57,17 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
 
   const handleUpdateScene = (index: number, updates: any) => {
     const newScenes = [...scenes];
-    newScenes[index] = { ...newScenes[index], ...updates };
+    const current = newScenes[index];
+    const changedCreativeContent = ['headline', 'subheadline', 'narrationText', 'ctaLabel', 'ctaDestination', 'claims', 'mediaAssetIds', 'motion', 'layout', 'deviceFrame', 'callouts', 'durationSeconds', 'chapterTitle', 'eyebrow', 'highlightWords', 'statValue', 'statLabel', 'afterTransition'].some(
+      field => Object.prototype.hasOwnProperty.call(updates, field) && JSON.stringify(updates[field]) !== JSON.stringify((current as any)[field])
+    );
+    const narrationChanged = Object.prototype.hasOwnProperty.call(updates, 'narrationText') && updates.narrationText !== current.narrationText;
+    newScenes[index] = {
+      ...current,
+      ...updates,
+      ...(changedCreativeContent ? { approvalStatus: 'draft', isApproved: false } : {}),
+      ...(narrationChanged ? { narrationAssetId: undefined, narrationDurationSeconds: undefined } : {})
+    };
     onChange({ ...project, scenes: newScenes });
   };
 
@@ -124,12 +134,19 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   };
 
   const handleGenerateSceneVoice = async (sceneId: string) => {
+    const selected = scenes.find(scene => scene.id === sceneId);
+    if (!selected || !(selected.isApproved || ['approved', 'locked'].includes(selected.approvalStatus || '')) || !selected.narrationText?.trim()) {
+      alert('Approve a non-empty narration script before generating voice.');
+      return;
+    }
+    if (!window.confirm(`Online — Gemini: send this approved narration text to Gemini for speech generation?\n\n${selected.narrationText}\n\nNo project images or assets are sent.`)) return;
     setGeneratingSceneId(sceneId);
     try {
       const res = await generateNarration(project.project.id, {
         sceneId,
         voice: project.audio?.narration?.voice || 'Puck',
-        fitDuration: true
+        fitDuration: true,
+        consentToSend: true
       });
       if (res.success && res.project) {
         onChange(res.project);
@@ -142,12 +159,20 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   };
 
   const handleGenerateAllVoice = async () => {
+    const notReady = scenes.find(scene => !(scene.isApproved || ['approved', 'locked'].includes(scene.approvalStatus || '')) || !scene.narrationText?.trim());
+    if (notReady) {
+      alert(`Approve a non-empty narration script for every scene first. Check scene ${notReady.id}.`);
+      return;
+    }
+    const scripts = scenes.map(scene => `${scene.id}: ${scene.narrationText}`).join('\n');
+    if (!window.confirm(`Online — Gemini: send the approved scene narration scripts to Gemini for speech generation?\n\n${scripts}\n\nNo project images or assets are sent.`)) return;
     setIsGeneratingAll(true);
     try {
       const res = await generateNarration(project.project.id, {
         allScenes: true,
         voice: project.audio?.narration?.voice || 'Puck',
-        fitDuration: true
+        fitDuration: true,
+        consentToSend: true
       });
       if (res.success && res.project) {
         onChange(res.project);
@@ -508,7 +533,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                   rows={2}
                   className="form-input font-bold"
                   value={currentScene.headline || ''}
-                  placeholder="e.g. হাজারো কাস্টমার মেসেজ সামলাতে হিমশিম খাচ্ছেন?"
+                  placeholder="Write an opening line using the language selected for this project."
                   onChange={(e) => handleUpdateScene(selectedSceneIndex, { headline: e.target.value })}
                 />
               </div>
@@ -521,7 +546,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                   type="text"
                   className="form-input text-emerald-400 font-semibold"
                   value={(currentScene.highlightWords || []).join(', ')}
-                  placeholder="e.g. হিমশিম, কাস্টমার"
+                  placeholder="Choose words already used in this scene"
                   onChange={(e) => {
                     const words = e.target.value.split(',').map(w => w.trim()).filter(Boolean);
                     handleUpdateScene(selectedSceneIndex, { highlightWords: words });
@@ -537,7 +562,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                       type="text"
                       className="form-input text-xl font-black text-amber-400"
                       value={currentScene.statValue || ''}
-                      placeholder="e.g. ১০ গুণ / 10x / 0.0%"
+                      placeholder="Enter only a value supported by approved evidence"
                       onChange={(e) => handleUpdateScene(selectedSceneIndex, { statValue: e.target.value })}
                     />
                   </div>
@@ -547,7 +572,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                       type="text"
                       className="form-input"
                       value={currentScene.statLabel || ''}
-                      placeholder="e.g. দ্রুত কাস্টমার রেসপন্স ও বিক্রির গতি"
+                      placeholder="Describe the evidence and its scope"
                       onChange={(e) => handleUpdateScene(selectedSceneIndex, { statLabel: e.target.value })}
                     />
                   </div>
@@ -560,7 +585,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                   type="text"
                   className="form-input"
                   value={currentScene.subheadline || ''}
-                  placeholder="e.g. প্রতিটি মেসেজের উত্তর দেওয়া এখন আরও সহজ ও দ্রুত।"
+                  placeholder="Add supporting copy that stays within approved product facts."
                   onChange={(e) => handleUpdateScene(selectedSceneIndex, { subheadline: e.target.value })}
                 />
               </div>
@@ -581,7 +606,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                   rows={2}
                   className="form-input"
                   style={{ minHeight: 60 }}
-                  value={currentScene.narrationText ?? (currentScene.headline || '')}
+                  value={currentScene.narrationText ?? ''}
                   placeholder="Enter narration text in Bengali or English for this scene..."
                   onChange={(e) => handleUpdateScene(selectedSceneIndex, { narrationText: e.target.value })}
                 />

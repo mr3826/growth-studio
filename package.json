@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -13,8 +16,9 @@
     "dev": "node scripts/dev.js",
     "build": "npm --workspace=apps/web run build",
     "start": "npm --workspace=apps/local-server run start",
-    "test": "node --test --test-concurrency=1 tests/**/*.test.js",
-    "test:matrix": "node tests/matrix.test.js",
-    "test:creative": "node tests/live-creative.standalone.js"
+    "test": "node scripts/run-tests.js",
+    "test:matrix": "node scripts/run-tests.js tests/matrix.test.js",
+    "test:creative": "node scripts/run-tests.js tests/creative.test.js",
+    "test:creative:live": "node scripts/run-tests.js tests/live-creative.standalone.js"
   }
 }

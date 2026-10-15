@@ -1,61 +1,50 @@
 import assert from 'node:assert/strict';
 import { probeMedia } from '../packages/render-adapter/src/index.js';
 import { buildServer } from '../apps/local-server/src/index.js';
-import fs from 'node:fs';
-
-const BASE_URL = 'http://127.0.0.1:4317';
+import { randomUUID } from 'node:crypto';
 
 async function runE2ETests() {
   console.log('====================================================');
-  console.log('   GROWTH STUDIO V0.01 — E2E VERIFICATION SUITE    ');
+  console.log('   GROWTH STUDIO V0.03 — E2E VERIFICATION SUITE    ');
   console.log('====================================================');
 
-  let serverInstance = null;
-  try {
-    const healthCheck = await fetch(`${BASE_URL}/api/health`);
-    if (!healthCheck.ok) throw new Error('Server not ready');
-  } catch (_) {
-    console.log('-> Starting local Fastify server at http://127.0.0.1:4317...');
-    serverInstance = await buildServer();
-    await serverInstance.listen({ port: 4317, host: '127.0.0.1' });
-    console.log('✓ Fastify server booted successfully for E2E suite.');
-  }
+  const serverInstance = await buildServer();
+  let projectId = null;
 
   try {
     // Test 1: Health check
     console.log('\n[1/8] Testing Server Health & Readiness...');
-    const healthRes = await fetch(`${BASE_URL}/api/health`);
-    assert.equal(healthRes.status, 200);
-    const health = await healthRes.json();
+    const healthRes = await serverInstance.inject({ method: 'GET', url: '/api/health' });
+    assert.equal(healthRes.statusCode, 200);
+    const health = healthRes.json();
     assert.equal(health.status, 'ok');
     assert.equal(health.chrome.available, true);
-    console.log('✓ Local server running on 127.0.0.1:4317');
+    console.log(`✓ Local API routes ready in isolated test storage`);
     console.log(`✓ Headless Chrome verified at: ${health.chrome.path}`);
     console.log(`✓ Storage Volume: ${health.storage.root} (${health.storage.freeGB} GB free)`);
 
     // Test 2: Create Generic Reference-Aligned Guided Story Starter Project
     console.log('\n[2/8] Creating Generic Starter Project (guided_bangla)...');
-    const createRes = await fetch(`${BASE_URL}/api/projects`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preset: 'guided_bangla' })
-    });
-    assert.equal(createRes.status, 201);
-    const project = await createRes.json();
-    const projectId = project.project.id;
+    const createRes = await serverInstance.inject({ method: 'POST', url: '/api/projects', payload: { preset: 'blank', name: `Growth Studio E2E ${randomUUID()}`, language: 'bn' } });
+    assert.equal(createRes.statusCode, 201);
+    const project = createRes.json();
+    projectId = project.project.id;
     assert.ok(projectId);
-    console.log(`✓ Guided Story starter project created with ID: '${projectId}'`);
+    console.log(`✓ Neutral Bengali project created with ID: '${projectId}'`);
     console.log(`✓ Project contains ${project.scenes.length} scenes and ${project.assets.length} assets`);
 
     // Test 3: Edit Project Content & Animation Settings
     console.log('\n[3/8] Modifying Video Content, Branding & Scene Motion...');
-    project.project.name = 'DukanBot Verified Story V0.01';
-    project.creative.keyMessage = 'সব কাস্টমার মেসেজ এক স্বয়ংক্রিয় ইনবক্সে ২৪/৭';
-    project.brand.primaryColor = '#18181B';
-    project.brand.accentColor = '#CCFF00';
-    project.scenes[0].headline = 'হাজারো কাস্টমার মেসেজ সামলাতে হিমশিম খাচ্ছেন?';
-    project.scenes[0].subheadline = 'দেরিতে রিপ্লাই মানেই সরাসরি কাস্টমার হারিয়ে যাওয়া।';
-    project.scenes[0].highlightWords = ['হিমশিম', 'মেসেজ'];
+    project.project.name = 'Growth Studio Offline Export Test';
+    project.creative.keyMessage = 'নিজের পণ্য, ব্র্যান্ড ও প্রমাণিত তথ্য দিয়ে একটি ভিডিও তৈরি করুন।';
+    project.brand.name = 'আপনার ব্র্যান্ড';
+    project.brand.primaryColor = '#7460D9';
+    project.brand.backgroundColor = '#17223B';
+    project.brand.accentColor = '#F4C35E';
+    project.creative.cta = { label: 'পরবর্তী পদক্ষেপ', destination: '' };
+    project.scenes[0].headline = 'আপনার গল্পের শুরু এখান থেকে';
+    project.scenes[0].subheadline = 'নিজের পণ্য ও সেবার সত্য তথ্য যোগ করুন।';
+    project.scenes[0].highlightWords = ['গল্পের শুরু'];
     project.scenes[0].motion = {
       entrance: 'stagger_words',
       exit: 'fade',
@@ -63,56 +52,49 @@ async function runE2ETests() {
       staggerMilliseconds: 70
     };
 
-    const saveRes = await fetch(`${BASE_URL}/api/projects/${projectId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(project)
-    });
-    assert.equal(saveRes.status, 200);
+    const saveRes = await serverInstance.inject({ method: 'PUT', url: `/api/projects/${projectId}`, payload: project });
+    assert.equal(saveRes.statusCode, 200, saveRes.body);
     console.log('✓ Project edits validated against JSON Schema and saved to disk');
 
     // Test 4: Reload Project and verify persistence
     console.log('\n[4/8] Verifying Project Persistence (Reload from disk)...');
-    const reloadRes = await fetch(`${BASE_URL}/api/projects/${projectId}`);
-    assert.equal(reloadRes.status, 200);
-    const reloaded = await reloadRes.json();
-    assert.equal(reloaded.project.name, 'DukanBot Verified Story V0.01');
-    assert.equal(reloaded.scenes[0].headline, 'হাজারো কাস্টমার মেসেজ সামলাতে হিমশিম খাচ্ছেন?');
+    const reloadRes = await serverInstance.inject({ method: 'GET', url: `/api/projects/${projectId}` });
+    assert.equal(reloadRes.statusCode, 200);
+    const reloaded = reloadRes.json();
+    assert.equal(reloaded.project.name, 'Growth Studio Offline Export Test');
+    assert.equal(reloaded.scenes[0].headline, 'আপনার গল্পের শুরু এখান থেকে');
+    assert.equal(JSON.stringify(reloaded).includes('DukanBot'), false);
     console.log('✓ Saved edits accurately recovered from project.json');
 
     // Test 5: Verify Preview Generation (Portrait, Landscape, and 4:5 Reference)
     console.log('\n[5/8] Testing Preview Compositions (4:5, 9:16, 16:9)...');
-    const preview45Res = await fetch(`${BASE_URL}/api/projects/${projectId}/preview-html?target=portrait_4_5`);
-    assert.equal(preview45Res.status, 200);
-    const html45 = await preview45Res.text();
+    const preview45Res = await serverInstance.inject({ method: 'GET', url: `/api/projects/${projectId}/preview-html?target=portrait_4_5` });
+    assert.equal(preview45Res.statusCode, 200);
+    const html45 = preview45Res.body;
     assert.ok(html45.includes('width=1080'));
     assert.ok(html45.includes('height=1350'));
-    assert.ok(html45.includes('হিমশিম'));
+    assert.ok(html45.includes('আপনার গল্পের শুরু'));
 
-    const previewPortraitRes = await fetch(`${BASE_URL}/api/projects/${projectId}/preview-html?target=portrait`);
-    assert.equal(previewPortraitRes.status, 200);
-    const htmlPortrait = await previewPortraitRes.text();
+    const previewPortraitRes = await serverInstance.inject({ method: 'GET', url: `/api/projects/${projectId}/preview-html?target=portrait` });
+    assert.equal(previewPortraitRes.statusCode, 200);
+    const htmlPortrait = previewPortraitRes.body;
     assert.ok(htmlPortrait.includes('width=1080'));
     assert.ok(htmlPortrait.includes('height=1920'));
 
-    const previewLandscapeRes = await fetch(`${BASE_URL}/api/projects/${projectId}/preview-html?target=landscape`);
-    assert.equal(previewLandscapeRes.status, 200);
-    const htmlLandscape = await previewLandscapeRes.text();
+    const previewLandscapeRes = await serverInstance.inject({ method: 'GET', url: `/api/projects/${projectId}/preview-html?target=landscape` });
+    assert.equal(previewLandscapeRes.statusCode, 200);
+    const htmlLandscape = previewLandscapeRes.body;
     assert.ok(htmlLandscape.includes('width=1920'));
     assert.ok(htmlLandscape.includes('height=1080'));
     console.log('✓ All 3 preview targets (4:5, 9:16, 16:9) generated and verified cleanly');
 
     // Test 6: Export Portrait MP4 (1080x1920 @ 30 FPS)
     console.log('\n[6/8] Exporting & Probing Portrait MP4 (1080x1920 @ 30 FPS)...');
-    const renderPortraitRes = await fetch(`${BASE_URL}/api/projects/${projectId}/renders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetId: 'portrait' })
-    });
-    assert.equal(renderPortraitRes.status, 202);
-    const { jobId: jobPortraitId } = await renderPortraitRes.json();
+    const renderPortraitRes = await serverInstance.inject({ method: 'POST', url: `/api/projects/${projectId}/renders`, payload: { targetId: 'portrait' } });
+    assert.equal(renderPortraitRes.statusCode, 202);
+    const { jobId: jobPortraitId } = renderPortraitRes.json();
 
-    let jobPortrait = await pollJobUntilDone(jobPortraitId);
+    let jobPortrait = await pollJobUntilDone(serverInstance, jobPortraitId);
     assert.equal(jobPortrait.status, 'done');
     console.log(`✓ Portrait render finished: ${jobPortrait.outputFileName}`);
 
@@ -133,15 +115,11 @@ async function runE2ETests() {
 
     // Test 7: Export Landscape MP4 (1920x1080 @ 30 FPS)
     console.log('\n[7/8] Exporting & Probing Landscape MP4 (1920x1080 @ 30 FPS)...');
-    const renderLandscapeRes = await fetch(`${BASE_URL}/api/projects/${projectId}/renders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetId: 'landscape' })
-    });
-    assert.equal(renderLandscapeRes.status, 202);
-    const { jobId: jobLandscapeId } = await renderLandscapeRes.json();
+    const renderLandscapeRes = await serverInstance.inject({ method: 'POST', url: `/api/projects/${projectId}/renders`, payload: { targetId: 'landscape' } });
+    assert.equal(renderLandscapeRes.statusCode, 202);
+    const { jobId: jobLandscapeId } = renderLandscapeRes.json();
 
-    let jobLandscape = await pollJobUntilDone(jobLandscapeId);
+    let jobLandscape = await pollJobUntilDone(serverInstance, jobLandscapeId);
     assert.equal(jobLandscape.status, 'done');
     console.log(`✓ Landscape render finished: ${jobLandscape.outputFileName}`);
 
@@ -162,15 +140,11 @@ async function runE2ETests() {
 
     // Test 8: Export 4:5 Portrait Reference Standard (1080x1350 @ 25 FPS)
     console.log('\n[8/8] Exporting & Probing 4:5 Reference Standard MP4 (1080x1350 @ 25 FPS)...');
-    const render45Res = await fetch(`${BASE_URL}/api/projects/${projectId}/renders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetId: 'portrait_4_5' })
-    });
-    assert.equal(render45Res.status, 202);
-    const { jobId: job45Id } = await render45Res.json();
+    const render45Res = await serverInstance.inject({ method: 'POST', url: `/api/projects/${projectId}/renders`, payload: { targetId: 'portrait_4_5' } });
+    assert.equal(render45Res.statusCode, 202);
+    const { jobId: job45Id } = render45Res.json();
 
-    let job45 = await pollJobUntilDone(job45Id);
+    let job45 = await pollJobUntilDone(serverInstance, job45Id);
     assert.equal(job45.status, 'done');
     console.log(`✓ 4:5 render finished: ${job45.outputFileName}`);
 
@@ -193,25 +167,24 @@ async function runE2ETests() {
     console.log('   >>> ALL 8 E2E CRITERIA VERIFIED AND PASSED! <<<  ');
     console.log('====================================================');
   } finally {
-    if (serverInstance) {
-      try {
-        await serverInstance.close();
-        console.log('✓ Fastify server shut down cleanly.');
-      } catch (_) {}
-    }
+    if (projectId) await serverInstance.inject({ method: 'DELETE', url: `/api/projects/${projectId}` });
+    await serverInstance.close();
+    console.log('✓ Fastify server shut down cleanly.');
   }
 }
 
-async function pollJobUntilDone(jobId) {
-  while (true) {
-    const res = await fetch(`${BASE_URL}/api/renders/${jobId}`);
-    const data = await res.json();
+async function pollJobUntilDone(serverInstance, jobId) {
+  const deadline = Date.now() + 8 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const res = await serverInstance.inject({ method: 'GET', url: `/api/renders/${jobId}` });
+    const data = res.json();
     if (data.status === 'done' || data.status === 'failed' || data.status === 'cancelled') {
       return data;
     }
     process.stdout.write(`Rendering ${data.targetId}: ${data.percent}% (${data.currentFrame}/${data.totalFrames})\r`);
     await new Promise(r => setTimeout(r, 800));
   }
+  throw new Error(`Render job '${jobId}' exceeded the 8 minute test timeout.`);
 }
 
 runE2ETests().catch(err => {

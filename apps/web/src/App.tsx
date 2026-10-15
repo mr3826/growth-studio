@@ -55,7 +55,7 @@ export const App: React.FC = () => {
         }).catch(() => {});
       } else {
         // Fallback to initial neutral blank project
-        const blank = await createProject({ name: 'My First Video', starter: 'guided_bangla' });
+          const blank = await createProject({ name: 'My First Video', starter: 'blank' });
         setProject(blank);
       }
     } catch (e) {

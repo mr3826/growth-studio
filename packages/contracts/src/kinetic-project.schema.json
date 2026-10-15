@@ -177,7 +177,7 @@
           "properties": {
             "label": {
               "type": "string",
-              "minLength": 1
+              "maxLength": 120
             },
             "destination": {
               "type": "string"
@@ -663,6 +663,14 @@
                   "wipe"
                 ]
               },
+              "transition": {
+                "type": "string",
+                "enum": ["cut", "crossfade", "wipe_left", "wipe_right", "zoom"]
+              },
+              "cameraPreset": {
+                "type": "string",
+                "enum": ["none", "slow_pan", "zoom_in", "pan_and_scan"]
+              },
               "easing": {
                 "type": "string",
                 "enum": [
@@ -913,6 +921,8 @@
           "approvalStatus": { "type": "string" },
           "isApproved": { "type": "boolean" },
           "pronunciationNotes": { "type": "string" },
+          "narrationLanguage": { "type": "string", "enum": ["bn", "en", "mixed"] },
+          "claimDisclaimer": { "type": "string" },
           "claims": {
             "type": "array",
             "items": { "type": "object" }

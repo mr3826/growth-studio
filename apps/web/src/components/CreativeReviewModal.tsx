@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Project, CreativeAudit, CreativeSuggestion } from '../types';
 import { reviewCreativeProject } from '../api';
 import {
@@ -30,17 +30,26 @@ export const CreativeReviewModal: React.FC<CreativeReviewModalProps> = ({
   onAuditUpdated
 }) => {
   const [audit, setAudit] = useState<CreativeAudit | null>(project.creative?.creativeAudit || null);
+  const [consentToOpenAi, setConsentToOpenAi] = useState(false);
   const [isRunningReview, setIsRunningReview] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [appliedSuggestions, setAppliedSuggestions] = useState<Set<string>>(new Set());
 
+  useEffect(() => {
+    if (isOpen) setConsentToOpenAi(false);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleRunReview = async () => {
+    if (!consentToOpenAi) {
+      setErrorMessage('Confirm the OpenAI review consent before sending storyboard text.');
+      return;
+    }
     setIsRunningReview(true);
     setErrorMessage(null);
     try {
-      const res = await reviewCreativeProject(project.project.id);
+      const res = await reviewCreativeProject(project.project.id, undefined, consentToOpenAi);
       if (res.success && res.audit) {
         setAudit(res.audit);
         onAuditUpdated(res.audit);
@@ -81,7 +90,7 @@ export const CreativeReviewModal: React.FC<CreativeReviewModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Independent quality audit of hook strength, narrative pacing, factual fidelity, and mobile typography.
+                AI suggestions for hook strength, narrative pacing, factual grounding, and mobile-safe copy. This text-only review does not verify rendered visuals or audio.
               </p>
             </div>
           </div>
@@ -89,7 +98,7 @@ export const CreativeReviewModal: React.FC<CreativeReviewModalProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={handleRunReview}
-              disabled={isRunningReview}
+              disabled={isRunningReview || !consentToOpenAi}
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRunningReview ? 'animate-spin' : ''}`} />
@@ -115,20 +124,24 @@ export const CreativeReviewModal: React.FC<CreativeReviewModalProps> = ({
 
         {/* Audit Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <label className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-100">
+            <input type="checkbox" checked={consentToOpenAi} onChange={e => setConsentToOpenAi(e.target.checked)} className="mt-0.5 accent-amber-500" />
+            <span><strong>Online — OpenAI.</strong> Allow storyboard text, script, product truth evidence and project language to be sent for a text-only review. No rendered frames, images, audio or product assets are sent. Request cap: up to $0.15; project cap applies.</span>
+          </label>
           {!audit ? (
             <div className="text-center py-12 space-y-4">
               <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400">
                 <FileCheck className="w-8 h-8" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">No Creative Audit on Record</h3>
+                <h3 className="text-base font-bold text-white">No AI Review on Record</h3>
                 <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
                   Click 'Run New Audit' to analyze your storyboard's hook, benefits, brand fidelity, pacing, and mobile legibility.
                 </p>
               </div>
               <button
                 onClick={handleRunReview}
-                disabled={isRunningReview}
+                disabled={isRunningReview || !consentToOpenAi}
                 className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 mx-auto shadow-lg shadow-indigo-600/20"
               >
                 <Sparkles className="w-4 h-4" />
@@ -165,7 +178,7 @@ export const CreativeReviewModal: React.FC<CreativeReviewModalProps> = ({
                   <span className="text-[10px] font-semibold text-slate-400">Facts Grounding</span>
                   <div className="flex items-baseline justify-between mt-1">
                     <span className="text-xl font-bold text-white">{audit.factsScore}/10</span>
-                    <span className="text-[10px] text-slate-500">Zero fabrication</span>
+                  <span className="text-[10px] text-slate-500">Text-only evidence review</span>
                   </div>
                 </div>
 
@@ -181,7 +194,7 @@ export const CreativeReviewModal: React.FC<CreativeReviewModalProps> = ({
                   <span className="text-[10px] font-semibold text-slate-400">Mobile Safe Text</span>
                   <div className="flex items-baseline justify-between mt-1">
                     <span className="text-xl font-bold text-white">{audit.mobileLegibilityScore}/10</span>
-                    <span className="text-[10px] text-slate-500">9:16 safe</span>
+                  <span className="text-[10px] text-slate-500">Text estimate only</span>
                   </div>
                 </div>
 

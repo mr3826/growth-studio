@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static';
 import fastifyMultipart from '@fastify/multipart';
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 
@@ -34,6 +35,7 @@ import {
   probeMedia,
   killProcessTree,
   pcmToWav,
+  GEMINI_TTS_MODEL,
   GEMINI_TTS_VOICES,
   isGeminiTtsAvailable,
   synthesizeSpeechGemini
@@ -62,23 +64,80 @@ const renderJobs = new Map();
 const abortControllers = new Map();
 const jobEmitter = new EventEmitter();
 const creativeOrchestrator = new CreativeOrchestrator({ storagePaths });
+const creativeRequestTimes = new Map();
+const creativeRequestsInFlight = new Set();
+
+function reserveCreativeRequest(projectId) {
+  const now = Date.now();
+  const recent = (creativeRequestTimes.get(projectId) || []).filter(timestamp => now - timestamp < 10 * 60 * 1000);
+  if (creativeRequestsInFlight.has(projectId)) return { ok: false, status: 409, error: 'A creative request for this project is already running.' };
+  if (recent.length >= 20) return { ok: false, status: 429, error: 'Local creative request limit reached. Wait before requesting more generations.' };
+  recent.push(now);
+  creativeRequestTimes.set(projectId, recent);
+  creativeRequestsInFlight.add(projectId);
+  return { ok: true };
+}
+
+function releaseCreativeRequest(projectId) {
+  creativeRequestsInFlight.delete(projectId);
+}
+
+function validLocalProjectId(id) {
+  return typeof id === 'string' && path.basename(id) === id && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(id);
+}
+
+function creativeFailure(err, reply) {
+  const message = String(err?.message || 'Creative request failed.');
+  const status = err?.code === 'consent_required' || err?.code === 'invalid_model' ? 400 :
+    err?.code === 'configuration_missing' ? 503 :
+      err?.code === 'provider_timeout' ? 504 :
+        err?.code === 'provider_unavailable' || err?.code === 'provider_auth' ? 502 :
+          err?.code === 'provider_rate_limited' || err?.code === 'request_cap_exceeded' || message.includes('AI spend limit reached') ? 429 :
+            message.includes('not found') ? 404 :
+              message.includes('approved or locked') || message.includes('Confirm replacing') ? 409 : 500;
+  return reply.code(status).send({ error: message, code: err?.code || 'creative_request_failed', isBudgetError: status === 429 });
+}
 
 export async function buildServer() {
   const fastify = Fastify({
     logger: false,
-    bodyLimit: 50 * 1024 * 1024 // 50MB
+    bodyLimit: 2 * 1024 * 1024 // Media uploads use streaming multipart limits below.
   });
 
   await fastify.register(fastifyCors, {
     origin: (origin, cb) => {
-      // Loopback/Local origin allowlist
-      if (!origin || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      const allowedOrigins = new Set([
+        `http://127.0.0.1:${PORT}`,
+        `http://localhost:${PORT}`,
+        'http://127.0.0.1:5173',
+        'http://localhost:5173'
+      ]);
+      if (!origin || allowedOrigins.has(origin)) {
         cb(null, true);
       } else {
         cb(null, false);
       }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+  });
+
+  const allowedBrowserOrigins = new Set([
+    `http://127.0.0.1:${PORT}`,
+    `http://localhost:${PORT}`,
+    'http://127.0.0.1:5173',
+    'http://localhost:5173'
+  ]);
+  fastify.addHook('onRequest', async (request, reply) => {
+    const hostHeader = String(request.headers.host || '');
+    let hostname = '';
+    try { hostname = new URL(`http://${hostHeader}`).hostname.toLowerCase(); } catch {}
+    if (hostHeader && !['127.0.0.1', 'localhost'].includes(hostname)) {
+      return reply.code(403).send({ error: 'Growth Studio accepts requests only through its loopback address.' });
+    }
+    const origin = request.headers.origin;
+    if (origin && !allowedBrowserOrigins.has(origin)) {
+      return reply.code(403).send({ error: 'This browser origin is not allowed to access local project data.' });
+    }
   });
 
   await fastify.register(fastifyMultipart, {
@@ -150,24 +209,31 @@ export async function buildServer() {
       },
       {
         id: 'guided_bangla',
-        name: 'দোকানবট — বাংলা প্রমোশনাল স্টোরি (Reference-Style 4:5)',
-        description: 'Reference-aligned Bengali kinetic typography, highlighted text, mobile & browser mockups, 8 structured chapters.',
+        name: 'বাংলা পণ্যের গল্প',
+        description: 'A Bengali-first editable story starter with space for your own evidence and brand.',
         templateId: 'guided_product_story',
         language: 'bn'
       },
       {
         id: 'saas',
-        name: 'CloudPulse SaaS Dashboard',
-        description: 'B2B software telemetry showcase with metrics, funnels, and real-time dashboard mockup.',
+        name: 'SaaS Product Story',
+        description: 'A neutral software promo outline; add your own verified product details.',
         templateId: 'bold_kinetic',
         language: 'en'
       },
       {
         id: 'mobile',
-        name: 'FlowPay Borderless Mobile App',
-        description: 'Consumer mobile app demonstration with smartphone frame, spotlight zooms, and transaction UI.',
+        name: 'Mobile App Showcase',
+        description: 'A mobile app outline with a screen placeholder for your own product assets.',
         templateId: 'app_showcase',
         language: 'en'
+      },
+      {
+        id: 'easymoderator',
+        name: 'EasyModerator — Bold & Future-Facing',
+        description: 'Use the EasyModerator brand colors and supplied visual assets as a starting point.',
+        templateId: 'guided_product_story',
+        language: 'mixed'
       }
     ];
   });
@@ -424,7 +490,7 @@ export async function buildServer() {
     return {
       available: isGeminiTtsAvailable(),
       provider: 'gemini',
-      model: 'gemini-2.5-flash-preview-tts',
+      model: GEMINI_TTS_MODEL,
       voices: GEMINI_TTS_VOICES,
       supportedLanguages: [
         { code: 'bn', name: 'Bangla (বাংলা)' },
@@ -435,19 +501,29 @@ export async function buildServer() {
   });
 
   // Preview TTS audio (in-browser immediate playback)
-  fastify.post('/api/narration/preview', async (request, reply) => {
-    const { text, voice = 'Puck', model = 'gemini-2.5-flash-preview-tts' } = request.body || {};
-    if (!text || !text.trim()) {
-      return reply.code(400).send({ error: 'Text is required for narration preview' });
+  fastify.post('/api/narration/preview', { bodyLimit: 16 * 1024 }, async (request, reply) => {
+    const { projectId, sceneId, voice = 'Puck', consentToSend } = request.body || {};
+    if (!validLocalProjectId(projectId) || !sceneId || consentToSend !== true) {
+      return reply.code(400).send({ error: 'Choose an approved scene and confirm sending its script to Gemini.' });
     }
+    const projectFile = path.join(PROJECTS_DIR, projectId, 'project.json');
+    if (!fs.existsSync(projectFile)) return reply.code(404).send({ error: 'Project not found.' });
+    const project = JSON.parse(fs.readFileSync(projectFile, 'utf8'));
+    const scene = (project.scenes || []).find(item => item.id === sceneId);
+    if (!scene) return reply.code(404).send({ error: 'Scene not found.' });
+    if (!(scene.isApproved === true || ['approved', 'locked'].includes(scene.approvalStatus))) {
+      return reply.code(409).send({ error: 'Approve this scene narration before sending it to Gemini.' });
+    }
+    const text = String(scene.narrationText || '').trim();
+    if (!text) return reply.code(400).send({ error: 'The approved scene has no narration script.' });
     try {
       const cacheDir = path.join(storagePaths.renders, 'tts_cache');
       if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-      const result = await synthesizeSpeechGemini({ text, voice, model, cacheDir });
+      const result = await synthesizeSpeechGemini({ text, voice, model: GEMINI_TTS_MODEL, cacheDir });
       reply.type('audio/wav');
       return result.wavBuffer;
     } catch (err) {
-      return reply.code(500).send({ error: err.message });
+      return reply.code(502).send({ error: err.message.includes('not set') ? err.message : 'Gemini TTS request failed. Check provider status, account access, quota, and network.' });
     }
   });
 
@@ -459,9 +535,12 @@ export async function buildServer() {
       sceneId,
       allScenes = false,
       voice = 'Puck',
-      model = 'gemini-2.5-flash-preview-tts',
+      consentToSend,
       fitDuration = true
     } = request.body || {};
+
+    if (!validLocalProjectId(id)) return reply.code(400).send({ error: 'Invalid project ID.' });
+    if (consentToSend !== true) return reply.code(400).send({ error: 'Confirm sending the approved scene script(s) to Gemini.' });
 
     const projFile = path.join(PROJECTS_DIR, safeId, 'project.json');
     if (!fs.existsSync(projFile)) {
@@ -480,21 +559,38 @@ export async function buildServer() {
     if (scenesToProcess.length === 0) {
       return reply.code(400).send({ error: 'No matching scenes found to generate narration for' });
     }
+    const unapprovedScene = scenesToProcess.find(scene => !(scene.isApproved === true || ['approved', 'locked'].includes(scene.approvalStatus)));
+    if (unapprovedScene) {
+      return reply.code(409).send({ error: `Approve narration for scene '${unapprovedScene.id}' before sending it to Gemini.` });
+    }
+    if (scenesToProcess.some(scene => !String(scene.narrationText || '').trim())) {
+      return reply.code(400).send({ error: 'Every selected scene needs an approved, non-empty narration script.' });
+    }
 
     const generated = [];
 
     for (const scene of scenesToProcess) {
-      const narrationText = (scene.narrationText || scene.headline || '').trim();
-      if (!narrationText) continue;
+      const narrationText = scene.narrationText.trim();
 
-      const ttsResult = await synthesizeSpeechGemini({
-        text: narrationText,
-        voice,
-        model,
-        cacheDir
-      });
+      let ttsResult;
+      try {
+        ttsResult = await synthesizeSpeechGemini({
+          text: narrationText,
+          voice,
+          model: GEMINI_TTS_MODEL,
+          cacheDir
+        });
+      } catch (err) {
+        const missingKey = String(err?.message || '').includes('CONTENT_STUDIO_GEMINI');
+        return reply.code(missingKey ? 503 : 502).send({
+          error: missingKey
+            ? 'Gemini TTS is not configured. Import a narration WAV or continue offline.'
+            : 'Gemini TTS request failed. Check provider status, account access, quota, and network.',
+          code: missingKey ? 'configuration_missing' : 'tts_provider_failed'
+        });
+      }
 
-      const filename = `narration-${scene.id}-${Date.now()}.wav`;
+      const filename = `narration-${randomUUID()}.wav`;
       const assetRelPath = `assets/${filename}`;
       const assetFullPath = path.join(PROJECTS_DIR, safeId, 'assets', filename);
       fs.writeFileSync(assetFullPath, ttsResult.wavBuffer);
@@ -511,7 +607,7 @@ export async function buildServer() {
         channels: 1,
         source: 'gemini_tts',
         provenance: {
-          model,
+          model: GEMINI_TTS_MODEL,
           voice,
           textLength: narrationText.length,
           timestamp: new Date().toISOString()
@@ -542,7 +638,7 @@ export async function buildServer() {
     project.audio.narration = {
       provider: 'gemini',
       voice,
-      model
+      model: GEMINI_TTS_MODEL
     };
 
     fs.writeFileSync(projFile, JSON.stringify(project, null, 2), 'utf8');
@@ -593,107 +689,116 @@ export async function buildServer() {
   });
 
   // Creative Director: Develop 3 distinct advertising concepts
-  fastify.post('/api/projects/:id/creative/concepts', async (request, reply) => {
+  fastify.post('/api/projects/:id/creative/concepts', { bodyLimit: 128 * 1024 }, async (request, reply) => {
     const { id } = request.params;
+    if (!validLocalProjectId(id)) return reply.code(400).send({ error: 'Invalid project ID.' });
     const safeId = path.basename(id);
-    const { brief = {}, model } = request.body || {};
+    const { brief = {}, model, consentToSend, forceRegenerate } = request.body || {};
+    const reservation = reserveCreativeRequest(safeId);
+    if (!reservation.ok) return reply.code(reservation.status).send({ error: reservation.error });
 
     try {
-      const result = await creativeOrchestrator.developConcepts(safeId, brief, { model });
+      const result = await creativeOrchestrator.developConcepts(safeId, brief, { model, consentToSend, forceRegenerate });
       const updatedProject = JSON.parse(fs.readFileSync(path.join(PROJECTS_DIR, safeId, 'project.json'), 'utf8'));
       return {
         success: true,
         concepts: result.concepts,
         modelUsed: result.modelUsed,
         usage: result.usage,
+        estimatedCostUsd: result.estimatedCostUsd,
+        cacheHit: result.cacheHit,
         durationMs: result.durationMs,
         project: updatedProject
       };
     } catch (err) {
-      const isBudget = err.message?.includes('AI spend limit reached');
-      return reply.code(isBudget ? 429 : 500).send({
-        error: err.message,
-        isBudgetError: isBudget
-      });
+      return creativeFailure(err, reply);
+    } finally {
+      releaseCreativeRequest(safeId);
     }
   });
 
   // Creative Director: Compile storyboard from approved concept
-  fastify.post('/api/projects/:id/creative/storyboard', async (request, reply) => {
+  fastify.post('/api/projects/:id/creative/storyboard', { bodyLimit: 128 * 1024 }, async (request, reply) => {
     const { id } = request.params;
+    if (!validLocalProjectId(id)) return reply.code(400).send({ error: 'Invalid project ID.' });
     const safeId = path.basename(id);
-    const { conceptId, model } = request.body || {};
+    const { conceptId, model, consentToSend, replaceScenesConfirmed, forceRegenerate } = request.body || {};
+    const reservation = reserveCreativeRequest(safeId);
+    if (!reservation.ok) return reply.code(reservation.status).send({ error: reservation.error });
 
     try {
-      const result = await creativeOrchestrator.compileStoryboard(safeId, conceptId, { model });
+      const result = await creativeOrchestrator.compileStoryboard(safeId, conceptId, { model, consentToSend, replaceScenesConfirmed, forceRegenerate });
       return {
         success: true,
         project: result.project,
         modelUsed: result.modelUsed,
-        usage: result.usage
+        usage: result.usage,
+        estimatedCostUsd: result.estimatedCostUsd,
+        cacheHit: result.cacheHit
       };
     } catch (err) {
-      const isNotFound = err.message?.includes('not found');
-      const isBudget = err.message?.includes('AI spend limit reached');
-      return reply.code(isNotFound ? 404 : (isBudget ? 429 : 500)).send({
-        error: err.message,
-        isBudgetError: isBudget
-      });
+      return creativeFailure(err, reply);
+    } finally {
+      releaseCreativeRequest(safeId);
     }
   });
 
   // Creative Director: Selective single-scene rewrite
-  fastify.post('/api/projects/:id/creative/scenes/:sceneId/rewrite', async (request, reply) => {
+  fastify.post('/api/projects/:id/creative/scenes/:sceneId/rewrite', { bodyLimit: 64 * 1024 }, async (request, reply) => {
     const { id, sceneId } = request.params;
+    if (!validLocalProjectId(id) || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$/.test(sceneId)) return reply.code(400).send({ error: 'Invalid project or scene ID.' });
     const safeId = path.basename(id);
-    const { instruction, prompt, model, force = false } = request.body || {};
+    const { instruction, prompt, model, consentToSend, forceRegenerate } = request.body || {};
     const effectiveInstruction = instruction || prompt;
 
     if (!effectiveInstruction || !effectiveInstruction.trim()) {
       return reply.code(400).send({ error: 'Revision instruction is required' });
     }
 
+    const reservation = reserveCreativeRequest(safeId);
+    if (!reservation.ok) return reply.code(reservation.status).send({ error: reservation.error });
+
     try {
-      const result = await creativeOrchestrator.rewriteScene(safeId, sceneId, effectiveInstruction, { model, force });
+      const result = await creativeOrchestrator.rewriteScene(safeId, sceneId, effectiveInstruction, { model, consentToSend, forceRegenerate });
       return {
         success: true,
         scene: result.scene,
         project: result.project,
         modelUsed: result.modelUsed,
-        usage: result.usage
+        usage: result.usage,
+        estimatedCostUsd: result.estimatedCostUsd,
+        cacheHit: result.cacheHit
       };
     } catch (err) {
-      const isNotFound = err.message?.includes('not found');
-      const isLocked = err.message?.includes('marked approved/locked');
-      const isBudget = err.message?.includes('AI spend limit reached');
-      const code = isNotFound ? 404 : (isLocked ? 409 : (isBudget ? 429 : 500));
-      return reply.code(code).send({
-        error: err.message,
-        isBudgetError: isBudget
-      });
+      return creativeFailure(err, reply);
+    } finally {
+      releaseCreativeRequest(safeId);
     }
   });
 
   // Creative Director: Comprehensive project creative review
-  fastify.post('/api/projects/:id/creative/review', async (request, reply) => {
+  fastify.post('/api/projects/:id/creative/review', { bodyLimit: 64 * 1024 }, async (request, reply) => {
     const { id } = request.params;
+    if (!validLocalProjectId(id)) return reply.code(400).send({ error: 'Invalid project ID.' });
     const safeId = path.basename(id);
-    const { model } = request.body || {};
+    const { model, consentToSend, forceRegenerate } = request.body || {};
+    const reservation = reserveCreativeRequest(safeId);
+    if (!reservation.ok) return reply.code(reservation.status).send({ error: reservation.error });
 
     try {
-      const result = await creativeOrchestrator.reviewProject(safeId, { model });
+      const result = await creativeOrchestrator.reviewProject(safeId, { model, consentToSend, forceRegenerate });
       return {
         success: true,
         audit: result.audit,
         modelUsed: result.modelUsed,
-        usage: result.usage
+        usage: result.usage,
+        estimatedCostUsd: result.estimatedCostUsd,
+        cacheHit: result.cacheHit
       };
     } catch (err) {
-      const isBudget = err.message?.includes('AI spend limit reached');
-      return reply.code(isBudget ? 429 : 500).send({
-        error: err.message,
-        isBudgetError: isBudget
-      });
+      return creativeFailure(err, reply);
+    } finally {
+      releaseCreativeRequest(safeId);
     }
   });
 

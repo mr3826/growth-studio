@@ -126,7 +126,7 @@ export const BrandMediaStep: React.FC<BrandMediaStepProps> = ({
               type="text"
               className="form-input font-bold"
               value={brand.name || ''}
-              placeholder="e.g. দোকানবট / CloudPulse"
+              placeholder="Enter your product or brand name"
               onChange={(e) => handleUpdateBrand('name', e.target.value)}
             />
           </div>
@@ -137,7 +137,7 @@ export const BrandMediaStep: React.FC<BrandMediaStepProps> = ({
               type="text"
               className="form-input"
               value={brand.tagline || ''}
-              placeholder="e.g. গ্রাহকের সাথে কথা হবে নিমেষেই।"
+              placeholder="Add a tagline supplied or approved by your team"
               onChange={(e) => handleUpdateBrand('tagline', e.target.value)}
             />
           </div>

@@ -30,6 +30,7 @@ export interface Project {
       category: string;
       statement: string;
       verificationStatus: 'verified_live' | 'approved_demo' | 'planned' | 'unknown';
+      isApproved?: boolean;
       proofAssetId?: string;
       notes?: string;
     }>;
@@ -147,6 +148,8 @@ export interface Project {
       entrance?: string;
       emphasis?: string;
       exit?: string;
+      transition?: string;
+      cameraPreset?: string;
       easing?: string;
       intensity?: number;
       staggerMilliseconds?: number;
@@ -156,7 +159,8 @@ export interface Project {
     approvalStatus?: 'draft' | 'approved' | 'locked';
     isApproved?: boolean;
     pronunciationNotes?: string;
-    claims?: Array<{ claimText: string; proofAssetId?: string; status?: string }>;
+    claims?: Array<{ claimText: string; evidenceId?: string; proofAssetId?: string; status?: string }>;
+    narrationLanguage?: 'bn' | 'en' | 'mixed';
     provenance?: any;
   }>;
   audio?: {
@@ -271,6 +275,7 @@ export interface ProductTruthItem {
   category: string;
   statement: string;
   verificationStatus: 'verified_live' | 'approved_demo' | 'planned' | 'unknown';
+  isApproved?: boolean;
   proofAssetId?: string;
   notes?: string;
 }
@@ -311,6 +316,9 @@ export interface CreativeAudit {
   pacingScore: number;
   mobileLegibilityScore: number;
   languageScore: number;
+  motionVarietyScore?: number;
+  audioSyncScore?: number;
+  ctaScore?: number;
   overallScore: number;
   summary: string;
   suggestions: CreativeSuggestion[];

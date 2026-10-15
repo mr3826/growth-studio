@@ -4,6 +4,16 @@ import { OpenAiCreativeProvider } from './creative-provider.js';
 import { AiUsageRecorder } from './usage-recorder.js';
 import { getTemplate } from '@kinetic-studio/template-engine';
 
+function getVisualAssetIds(assets = []) {
+  const audioExtensions = new Set(['.wav', '.mp3', '.aac', '.m4a', '.ogg', '.flac']);
+  const visualKinds = new Set(['image', 'logo', 'screenshot', 'video', 'screen_recording', 'media']);
+  return assets.filter(asset => {
+    const kind = String(asset.kind || '').toLowerCase();
+    const extension = path.extname(asset.file || '').toLowerCase();
+    return !audioExtensions.has(extension) && (visualKinds.has(kind) || ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.mp4', '.mov', '.webm'].includes(extension));
+  }).map(asset => asset.id);
+}
+
 export class CreativeOrchestrator {
   constructor({ storagePaths, provider = null } = {}) {
     this.storagePaths = storagePaths;
@@ -83,30 +93,53 @@ export class CreativeOrchestrator {
 
   async developConcepts(projectId, customBrief = {}, options = {}) {
     const project = this._loadProject(projectId);
-    const availableAssetIds = (project.assets || []).map(a => a.id);
+    const availableAssetIds = getVisualAssetIds(project.assets || []);
 
     const mergedBrief = {
       projectId,
-      brandName: customBrief.brandName || project.brand?.name || project.project?.clientOrProduct || 'My Brand',
-      category: customBrief.category || project.creative?.category || 'SaaS / Web App',
-      audience: customBrief.audience || project.creative?.audience || 'Modern Teams',
-      problem: customBrief.problem || project.creative?.painPoint || 'Customer frustration',
-      keyMessage: customBrief.keyMessage || project.creative?.keyMessage || 'Fast, automated solution',
-      benefits: customBrief.benefits || project.creative?.benefits || [project.creative?.keyMessage].filter(Boolean),
+      brandName: customBrief.brandName ?? project.brand?.name ?? project.project?.clientOrProduct ?? project.project?.name ?? '',
+      category: customBrief.category ?? project.creative?.category ?? '',
+      audience: customBrief.audience ?? project.creative?.audience ?? '',
+      problem: customBrief.problem ?? project.creative?.painPoint ?? project.creative?.problem ?? '',
+      keyMessage: customBrief.keyMessage ?? project.creative?.keyMessage ?? '',
+      benefits: customBrief.benefits ?? project.creative?.benefits ?? [],
       language: customBrief.language || project.project?.language || 'en',
-      targetDuration: customBrief.targetDuration || 30,
-      communicationGoal: customBrief.communicationGoal || project.creative?.objective || 'awareness',
-      funnelStage: customBrief.funnelStage || 'top_of_funnel',
-      ctaLabel: customBrief.ctaLabel || project.creative?.cta?.label || 'Get Started',
-      ctaDestination: customBrief.ctaDestination || project.creative?.cta?.destination || 'https://example.com',
+      targetDuration: customBrief.targetDuration ?? project.creative?.targetDuration ?? 30,
+      communicationGoal: customBrief.communicationGoal ?? project.creative?.communicationGoal ?? project.creative?.objective ?? '',
+      funnelStage: customBrief.funnelStage ?? project.creative?.funnelStage ?? '',
+      ctaLabel: customBrief.ctaLabel ?? project.creative?.cta?.label ?? '',
+      ctaDestination: customBrief.ctaDestination ?? project.creative?.cta?.destination ?? '',
       prohibitedTopics: customBrief.prohibitedTopics || project.creative?.prohibitedPhrases || [],
       availableAssetIds,
-      productTruthProfile: project.creative?.productTruthProfile || []
+      productTruthProfile: customBrief.productTruthProfile ?? project.creative?.productTruthProfile ?? []
     };
+
+    if (options.consentToSend !== true) {
+      const error = new Error('Confirm that the displayed text may be sent to OpenAI before generating.');
+      error.code = 'consent_required';
+      throw error;
+    }
+
+    // Persist source brief and evidence separately from generated concepts.
+    project.creative = project.creative || {};
+    project.creative.category = mergedBrief.category;
+    project.creative.audience = mergedBrief.audience;
+    project.creative.painPoint = mergedBrief.problem;
+    project.creative.keyMessage = mergedBrief.keyMessage;
+    project.creative.benefits = mergedBrief.benefits;
+    project.creative.targetDuration = mergedBrief.targetDuration;
+    project.creative.communicationGoal = mergedBrief.communicationGoal;
+    project.creative.funnelStage = mergedBrief.funnelStage;
+    project.creative.prohibitedTopics = mergedBrief.prohibitedTopics;
+    project.creative.productTruthProfile = mergedBrief.productTruthProfile;
+    project.creative.cta = { ...(project.creative.cta || {}), label: mergedBrief.ctaLabel, destination: mergedBrief.ctaDestination };
+    this._saveProject(projectId, project);
 
     const result = await this.provider.generateConcepts(mergedBrief, {
       projectId,
       model: options.model,
+      consentToSend: options.consentToSend,
+      forceRegenerate: options.forceRegenerate,
       signal: options.signal
     });
 
@@ -123,6 +156,8 @@ export class CreativeOrchestrator {
       concepts: project.creative.concepts,
       modelUsed: result.modelUsed,
       usage: result.usage,
+      estimatedCostUsd: result.estimatedCostUsd,
+      cacheHit: result.cacheHit,
       durationMs: result.durationMs
     };
   }
@@ -130,87 +165,109 @@ export class CreativeOrchestrator {
   async compileStoryboard(projectId, conceptId, options = {}) {
     const project = this._loadProject(projectId);
     const concepts = project.creative?.concepts || [];
-    const selectedConcept = concepts.find(c => c.id === conceptId) || concepts[0];
+    const selectedConcept = concepts.find(c => c.id === conceptId);
 
     if (!selectedConcept) {
       throw new Error(`Concept with ID '${conceptId}' not found. Please develop concepts first.`);
     }
 
-    const availableAssetIds = (project.assets || []).map(a => a.id);
+    if (options.consentToSend !== true) {
+      const error = new Error('Confirm that the displayed text may be sent to OpenAI before generating.');
+      error.code = 'consent_required';
+      throw error;
+    }
+    if ((project.scenes || []).length > 0 && options.replaceScenesConfirmed !== true) {
+      throw new Error('Confirm replacing the existing storyboard before generating a new scene set.');
+    }
+    const selectedTemplateId = project.template?.id;
+    const templateDef = getTemplate(selectedTemplateId);
+    if (!templateDef) throw new Error('Select one of the installed templates before generating a storyboard.');
+
+    const availableAssetIds = getVisualAssetIds(project.assets || []);
     const brief = {
       projectId,
-      brandName: project.brand?.name || 'Brand',
-      audience: project.creative?.audience || 'Audience',
+      brandName: project.brand?.name || project.project?.clientOrProduct || project.project?.name || '',
+      audience: project.creative?.audience || '',
+      keyMessage: project.creative?.keyMessage || '',
       language: project.project?.language || 'en',
-      ctaLabel: project.creative?.cta?.label || 'Learn More',
-      ctaDestination: project.creative?.cta?.destination || 'https://example.com',
+      ctaLabel: project.creative?.cta?.label || '',
+      ctaDestination: project.creative?.cta?.destination || '',
+      targetDuration: project.creative?.targetDuration || selectedConcept.suggestedDuration,
+      templateId: selectedTemplateId,
       availableAssetIds,
       productTruthProfile: project.creative?.productTruthProfile || []
     };
 
     const result = await this.provider.buildStoryboard(brief, selectedConcept, {
       projectId,
+      templateId: selectedTemplateId,
       model: options.model,
+      consentToSend: options.consentToSend,
+      forceRegenerate: options.forceRegenerate,
       signal: options.signal
     });
 
     const aiStoryboard = result.data;
-    const targetTemplateId = aiStoryboard.selectedTemplateId || selectedConcept.suggestedTemplateId || project.template?.id || 'bold_kinetic';
-    const templateDef = getTemplate(targetTemplateId);
-    const allowedKinds = templateDef?.sceneKinds || ['kinetic_text', 'problem', 'solution', 'ui_demo', 'stat', 'cta'];
-    const allowedMotions = templateDef?.motionPresets || ['stagger_words', 'fade_up', 'slide_left', 'scale_pop', 'mask_reveal'];
+    if (aiStoryboard.selectedTemplateId !== selectedTemplateId) throw new Error('Storyboard template differs from the user-selected template.');
 
     // Map AI scenes into project schema scenes
     const compiledScenes = (aiStoryboard.scenes || []).map((s, index) => {
-      // Validate scene kind against installed template
-      const kind = allowedKinds.includes(s.sceneKind) ? s.sceneKind : 'kinetic_text';
-      const entrance = allowedMotions.includes(s.motion?.entrance) ? s.motion.entrance : 'stagger_words';
-      const exit = s.motion?.exit || 'fade';
-
-      // Validate visual asset IDs against actual user assets
-      const validMediaAssets = (s.visuals?.assetIds || []).filter(id => availableAssetIds.includes(id));
-      if (validMediaAssets.length === 0 && (kind === 'ui_demo' || kind === 'solution')) {
-        // If logo is available and scene is solution, attach logo
-        if (availableAssetIds.includes('logo')) validMediaAssets.push('logo');
-      }
+      const kind = s.sceneKind;
+      const truthById = new Map((project.creative.productTruthProfile || []).map(item => [item.id, item]));
+      const claims = s.claims.map(claim => {
+        const evidence = truthById.get(claim.evidenceId);
+        const status = evidence?.verificationStatus || evidence?.status;
+        const approved = evidence?.isApproved === true || evidence?.approved === true;
+        if (!evidence || !approved || status !== claim.status || !['verified_live', 'approved_demo'].includes(status)) {
+          throw new Error(`Claim in scene '${s.sceneId}' is not supported by approved product evidence.`);
+        }
+        return { claimText: claim.claimText, evidenceId: claim.evidenceId, status, disclaimer: claim.disclaimer };
+      });
 
       return {
-        id: s.sceneId || `scene-${index + 1}`,
-        chapterNumber: s.chapterNumber || index + 1,
-        chapterTitle: s.chapterTitle || `Scene ${index + 1}`,
+        id: s.sceneId,
+        chapterNumber: s.chapterNumber,
+        chapterTitle: s.chapterTitle,
         kind,
-        durationSeconds: Math.max(3, Math.min(12, Number(s.durationSeconds) || 5)),
-        eyebrow: s.onscreen?.eyebrow || '',
-        headline: s.onscreen?.headline || 'Headline',
-        subheadline: s.onscreen?.subheadline || '',
-        highlightWords: Array.isArray(s.onscreen?.highlightWords) ? s.onscreen.highlightWords : [],
-        ctaLabel: s.onscreen?.ctaLabel || (kind === 'cta' ? project.creative?.cta?.label || 'Get Started' : ''),
-        ctaDestination: s.onscreen?.ctaDestination || (kind === 'cta' ? project.creative?.cta?.destination || '' : ''),
-        narrationText: s.narration?.text || s.onscreen?.headline || '',
+        durationSeconds: s.durationSeconds,
+        eyebrow: s.onscreen.eyebrow,
+        headline: s.onscreen.headline,
+        subheadline: s.onscreen.subheadline,
+        highlightWords: s.onscreen.highlightWords,
+        ctaLabel: s.onscreen.ctaLabel,
+        ctaDestination: s.onscreen.ctaDestination,
+        statValue: s.onscreen.statValue,
+        statLabel: s.onscreen.statLabel,
+        narrationText: s.narration.text,
         narrationAssetId: null,
-        mediaAssetIds: validMediaAssets,
-        layout: s.visuals?.layout || (kind === 'ui_demo' ? 'device_mockup' : 'centered'),
-        deviceFrame: s.visuals?.deviceType && s.visuals.deviceType !== 'none' ? s.visuals.deviceType : (kind === 'ui_demo' ? 'browser_window' : 'none'),
-        callouts: s.visuals?.calloutLabel ? [{ label: s.visuals.calloutLabel, x: 0.65, y: 0.4, placement: 'left' }] : [],
+        mediaAssetIds: s.visuals.assetIds,
+        layout: s.visuals.layout,
+        deviceFrame: s.visuals.deviceType,
+        callouts: s.visuals.calloutLabel ? [{ label: s.visuals.calloutLabel, x: 0.65, y: 0.4, placement: 'left' }] : [],
         motion: {
-          entrance,
-          emphasis: s.motion?.emphasis || 'highlight',
-          exit,
+          entrance: s.motion.entrance,
+          emphasis: s.motion.emphasis,
+          exit: s.motion.exit,
+          transition: s.motion.transition,
+          cameraPreset: s.motion.cameraPreset,
           easing: 'spring',
-          intensity: s.motion?.intensity || 0.75,
+          intensity: s.motion.intensity,
           staggerMilliseconds: 70
         },
-        afterTransition: s.motion?.transition || 'crossfade',
-        transitionDurationSeconds: 0.35,
-        sceneRole: s.sceneRole || 'feature',
+        afterTransition: s.motion.transition,
+        transitionDurationSeconds: s.motion.transition === 'cut' ? 0 : 0.35,
+        sceneRole: s.sceneRole,
         approvalStatus: 'draft',
         isApproved: false,
-        pronunciationNotes: s.narration?.pronunciationNotes || '',
-        claims: s.claims || []
+        pronunciationNotes: s.narration.pronunciationNotes,
+        narrationLanguage: s.narration.language,
+        claims,
+        claimDisclaimer: claims.filter(claim => claim.status === 'approved_demo').map(claim => claim.disclaimer).join(' · '),
+        provenance: { generatedBy: 'openai', model: result.modelUsed, generatedAt: new Date().toISOString(), conceptId }
       };
     });
 
-    project.template.id = targetTemplateId;
+    project.template.id = selectedTemplateId;
     project.creative.selectedConceptId = conceptId;
     project.scenes = compiledScenes;
 
@@ -221,7 +278,9 @@ export class CreativeOrchestrator {
       success: true,
       project,
       modelUsed: result.modelUsed,
-      usage: result.usage
+      usage: result.usage,
+      estimatedCostUsd: result.estimatedCostUsd,
+      cacheHit: result.cacheHit
     };
   }
 
@@ -233,45 +292,76 @@ export class CreativeOrchestrator {
     }
 
     const currentScene = project.scenes[sceneIndex];
-    if (currentScene.isApproved && !options.force) {
-      throw new Error(`Scene '${sceneId}' is marked approved/locked. Unlock or use force:true to rewrite.`);
+    if (currentScene.isApproved || ['approved', 'locked'].includes(currentScene.approvalStatus)) {
+      throw new Error(`Scene '${sceneId}' is approved or locked. Duplicate/unlock it manually before requesting a rewrite.`);
     }
 
-    const availableAssetIds = (project.assets || []).map(a => a.id);
+    const availableAssetIds = getVisualAssetIds(project.assets || []);
     const brief = {
       projectId,
-      brandName: project.brand?.name || 'Brand',
+      brandName: project.brand?.name || project.project?.name || '',
       language: project.project?.language || 'en',
+      templateId: project.template?.id,
       availableAssetIds,
       productTruthProfile: project.creative?.productTruthProfile || []
     };
 
     const result = await this.provider.rewriteSelectedScene(currentScene, brief, instruction, {
       projectId,
+      templateId: project.template?.id,
       model: options.model,
+      consentToSend: options.consentToSend,
+      forceRegenerate: options.forceRegenerate,
       signal: options.signal
     });
 
     const rewritten = result.data;
-    const templateDef = getTemplate(project.template?.id || 'bold_kinetic');
-    const allowedMotions = templateDef?.motionPresets || ['stagger_words', 'fade_up', 'slide_left', 'scale_pop', 'mask_reveal'];
+    const truthById = new Map((project.creative?.productTruthProfile || []).map(item => [item.id, item]));
+    const claims = rewritten.claims.map(claim => {
+      const evidence = truthById.get(claim.evidenceId);
+      const status = evidence?.verificationStatus || evidence?.status;
+      const approved = evidence?.isApproved === true || evidence?.approved === true;
+      if (!evidence || !approved || status !== claim.status || !['verified_live', 'approved_demo'].includes(status)) {
+        throw new Error('Rewritten scene claim is not supported by approved product evidence.');
+      }
+      return { claimText: claim.claimText, evidenceId: claim.evidenceId, status, disclaimer: claim.disclaimer };
+    });
 
     // Update ONLY the selected scene, preserving unaffected scenes and unchanged locks
     const updatedScene = {
       ...currentScene,
+      kind: rewritten.sceneKind,
       chapterTitle: rewritten.chapterTitle || currentScene.chapterTitle,
       eyebrow: rewritten.onscreen?.eyebrow || currentScene.eyebrow,
       headline: rewritten.onscreen?.headline || currentScene.headline,
       subheadline: rewritten.onscreen?.subheadline || currentScene.subheadline,
       highlightWords: rewritten.onscreen?.highlightWords || currentScene.highlightWords,
+      ctaLabel: rewritten.onscreen?.ctaLabel || currentScene.ctaLabel,
+      ctaDestination: rewritten.onscreen?.ctaDestination || currentScene.ctaDestination,
+      statValue: rewritten.onscreen?.statValue || currentScene.statValue,
+      statLabel: rewritten.onscreen?.statLabel || currentScene.statLabel,
       narrationText: rewritten.narration?.text || currentScene.narrationText,
       durationSeconds: Math.max(3, Math.min(12, Number(rewritten.durationSeconds) || currentScene.durationSeconds)),
+      mediaAssetIds: rewritten.visuals.assetIds,
+      layout: rewritten.visuals.layout,
+      deviceFrame: rewritten.visuals.deviceType,
+      callouts: rewritten.visuals.calloutLabel ? [{ label: rewritten.visuals.calloutLabel, x: 0.65, y: 0.4, placement: 'left' }] : [],
       motion: {
         ...currentScene.motion,
-        entrance: allowedMotions.includes(rewritten.motion?.entrance) ? rewritten.motion.entrance : currentScene.motion?.entrance,
-        exit: rewritten.motion?.exit || currentScene.motion?.exit
+        entrance: rewritten.motion.entrance,
+        emphasis: rewritten.motion.emphasis,
+        exit: rewritten.motion.exit,
+        transition: rewritten.motion.transition,
+        cameraPreset: rewritten.motion.cameraPreset,
+        intensity: rewritten.motion.intensity
       },
+      afterTransition: rewritten.motion.transition,
+      transitionDurationSeconds: rewritten.motion.transition === 'cut' ? 0 : 0.35,
+      sceneRole: rewritten.sceneRole,
       pronunciationNotes: rewritten.narration?.pronunciationNotes || currentScene.pronunciationNotes,
+      narrationLanguage: rewritten.narration.language,
+      claims,
+      claimDisclaimer: claims.filter(claim => claim.status === 'approved_demo').map(claim => claim.disclaimer).join(' · '),
       approvalStatus: 'draft',
       isApproved: false, // New draft requires review
       provenance: {
@@ -296,7 +386,9 @@ export class CreativeOrchestrator {
       scene: updatedScene,
       project,
       modelUsed: result.modelUsed,
-      usage: result.usage
+      usage: result.usage,
+      estimatedCostUsd: result.estimatedCostUsd,
+      cacheHit: result.cacheHit
     };
   }
 
@@ -305,6 +397,8 @@ export class CreativeOrchestrator {
     const result = await this.provider.reviewStoryboard(project, {
       projectId,
       model: options.model,
+      consentToSend: options.consentToSend,
+      forceRegenerate: options.forceRegenerate,
       signal: options.signal
     });
 
@@ -321,7 +415,9 @@ export class CreativeOrchestrator {
     return {
       audit: project.creative.creativeAudit,
       modelUsed: result.modelUsed,
-      usage: result.usage
+      usage: result.usage,
+      estimatedCostUsd: result.estimatedCostUsd,
+      cacheHit: result.cacheHit
     };
   }
 }

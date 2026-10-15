@@ -5,6 +5,7 @@ import { resolveStoragePaths } from '../packages/contracts/src/storage.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 
 async function testRender() {
   console.log('--- Starting Test Render & Cancellation Verification ---');
@@ -24,11 +25,8 @@ async function testRender() {
 
   const targetId = 'portrait';
   const comp = compileComposition({ project, targetId });
-  const outputPath = path.join(storage.exports, 'test-render-portrait.mp4');
-
-  if (fs.existsSync(outputPath)) {
-    try { fs.unlinkSync(outputPath); } catch {}
-  }
+  const outputPath = path.join(storage.exports, `v003-render-${randomUUID()}-portrait.mp4`);
+  assert.equal(fs.existsSync(outputPath), false);
 
   console.log(`[1/2] Compiling ${comp.totalFrames} frames (${comp.totalDuration}s) at ${comp.target.width}x${comp.target.height}`);
 
@@ -57,10 +55,8 @@ async function testRender() {
   // Test 2: Verify Cancellation handling
   console.log('\n[2/2] Testing AbortController Cancellation...');
   const cancelController = new AbortController();
-  const cancelOutputPath = path.join(storage.exports, 'test-cancelled-render.mp4');
-  if (fs.existsSync(cancelOutputPath)) {
-    try { fs.unlinkSync(cancelOutputPath); } catch {}
-  }
+  const cancelOutputPath = path.join(storage.exports, `v003-render-${randomUUID()}-cancelled.mp4`);
+  assert.equal(fs.existsSync(cancelOutputPath), false);
 
   // Create longer composition for cancellation
   const longProject = createBlankProject('Cancellation Test Project');

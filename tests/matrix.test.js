@@ -1,493 +1,309 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
-import {
-  createEasyModeratorProject,
-  createBlankProject,
-  resolveStoragePaths
-} from '../packages/contracts/src/index.js';
-import { compileComposition } from '../packages/template-engine/src/index.js';
-import {
-  renderVideo,
-  probeMedia,
-  measureAudioVolume,
-  detectSilence,
-  synthesizeSpeechGemini
-} from '../packages/render-adapter/src/index.js';
+import { test } from 'node:test';
+import { createBlankProject, createEasyModeratorProject, resolveStoragePaths } from '../packages/contracts/src/index.js';
+import { compileComposition, listTemplates, runPreflight } from '../packages/template-engine/src/index.js';
+import { renderVideo, probeMedia, measureAudioVolume, detectSilence } from '../packages/render-adapter/src/index.js';
 import { CreativeOrchestrator } from '../apps/local-server/src/creative/creative-orchestrator.js';
 
 const storage = resolveStoragePaths();
-const EXPORTS_DIR = storage.exports;
-const RENDERS_DIR = storage.renders;
-const CACHE_DIR = path.join(RENDERS_DIR, 'tts_cache');
-if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+const repoRoot = path.resolve('.');
+const easyModeratorAssets = path.join(repoRoot, 'data', 'projects', 'easymoderator-launch', 'assets');
+const psVoiceScript = path.join(repoRoot, 'tests', 'helpers', 'create-local-narration.ps1');
+const proofResults = [];
 
-const SAMPLE_MUSIC = path.resolve('data/projects/easymoderator-launch/assets/background-music.wav');
-
-function resolveProjectAudio(project) {
-  const audioTracks = [];
-  let sceneStartTime = 0;
-  for (const scene of project.scenes || []) {
-    const sceneDur = Number(scene.durationSeconds) || 4;
-    if (scene.narrationAssetId) {
-      const asset = (project.assets || []).find(a => a.id === scene.narrationAssetId);
-      if (asset && asset.file && fs.existsSync(asset.file)) {
-        audioTracks.push({
-          id: `narr-${scene.id}`,
-          type: 'voice',
-          path: asset.file,
-          startTime: sceneStartTime + 0.1,
-          duration: scene.narrationDurationSeconds || asset.durationSeconds || sceneDur,
-          volume: 1.0
-        });
-      }
-    }
-    sceneStartTime += sceneDur;
-  }
-  const audioPath = (fs.existsSync(SAMPLE_MUSIC) && project.audio?.mode !== 'silent') ? SAMPLE_MUSIC : undefined;
-  const audioConfig = project.audio || {
-    mode: 'voice_and_music',
-    musicVolume: 0.18,
-    voiceVolume: 1.0,
-    duckMusicUnderVoice: true,
-    targetLufs: -16
-  };
-  return { audioTracks, audioPath, audioConfig };
+function localNarration(text, outputPath) {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  assert.equal(fs.existsSync(outputPath), false, `Refusing to replace an existing voice fixture: ${outputPath}`);
+  execFileSync('powershell.exe', [
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psVoiceScript,
+    '-OutputPath', outputPath, '-Text', text
+  ], { stdio: 'pipe', windowsHide: true, maxBuffer: 1024 * 1024 });
+  const buffer = fs.readFileSync(outputPath);
+  assert.equal(buffer.subarray(0, 4).toString(), 'RIFF');
+  assert.equal(buffer.subarray(8, 12).toString(), 'WAVE');
+  const durationSeconds = (buffer.length - 44) / (24000 * 2);
+  return { path: outputPath, durationSeconds, sha256: createHash('sha256').update(buffer).digest('hex') };
 }
 
-async function runVideoProofMatrix() {
-  console.log('================================================================');
-  console.log(' GROWTH STUDIO V0.03 — VIDEO PROOF MATRIX VERIFICATION (A - F)  ');
-  console.log('================================================================\n');
-
-  // --------------------------------------------------------------------------
-  // Matrix A: EasyModerator 16:9 Bold & Future-Facing (Audible & Ducked)
-  // --------------------------------------------------------------------------
-  console.log('--- Matrix A: EasyModerator 16:9 Bold & Future-Facing ---');
-  const projA = createEasyModeratorProject();
-  projA.scenes = projA.scenes.slice(0, 3); // 3 focused scenes for matrix test (~15s)
-  projA.scenes[0].durationSeconds = 4.5;
-  projA.scenes[1].durationSeconds = 5.0;
-  projA.scenes[2].durationSeconds = 4.5;
-
-  // Synthesize/cache voice narration for scene 0
-  const ttsA0 = await synthesizeSpeechGemini({
-    text: projA.scenes[0].narrationText || projA.scenes[0].headline,
-    voice: 'Puck',
-    cacheDir: CACHE_DIR
-  });
-  const voiceA0Path = path.join(CACHE_DIR, 'matrix-a-voice0.wav');
-  fs.writeFileSync(voiceA0Path, ttsA0.wavBuffer);
-  projA.assets.push({
-    id: 'voice-s0',
-    kind: 'voice',
-    file: voiceA0Path,
-    durationSeconds: ttsA0.durationSeconds
-  });
-  projA.scenes[0].narrationAssetId = 'voice-s0';
-  projA.scenes[0].narrationDurationSeconds = ttsA0.durationSeconds;
-
-  const compA = compileComposition({ project: projA, targetId: 'landscape' });
-  const outputA = path.join(EXPORTS_DIR, 'matrix-a-easymoderator-16x9.mp4');
-  if (fs.existsSync(outputA)) fs.unlinkSync(outputA);
-
-  const audioA = resolveProjectAudio(projA);
-  console.log(`Rendering Matrix A (1920x1080 @ 30 FPS, ${compA.totalFrames} frames)...`);
-  const resA = await renderVideo({
-    compositionHtml: compA.html,
-    target: compA.target,
-    totalFrames: compA.totalFrames,
-    totalDuration: compA.totalDuration,
-    outputPath: outputA,
-    tempParentDir: RENDERS_DIR,
-    audioTracks: audioA.audioTracks,
-    audioPath: audioA.audioPath,
-    audioConfig: audioA.audioConfig,
-    onProgress: (p) => {
-      if (p.currentFrame % 50 === 0 || p.currentFrame === p.totalFrames) {
-        process.stdout.write(`  Render A Progress: ${p.percent}% (${p.currentFrame}/${p.totalFrames})\r`);
-      }
+function persistProject(project) {
+  const id = project.project.id;
+  const projectDir = path.join(storage.projects, id);
+  const assetsDir = path.join(projectDir, 'assets');
+  fs.mkdirSync(assetsDir, { recursive: true });
+  for (const asset of project.assets || []) {
+    if (!asset.file || path.isAbsolute(asset.file)) continue;
+    if (asset.file.startsWith('assets/')) {
+      const source = path.join(easyModeratorAssets, path.basename(asset.file));
+      const target = path.join(projectDir, asset.file);
+      if (fs.existsSync(source) && !fs.existsSync(target)) fs.copyFileSync(source, target);
     }
-  });
-  console.log('\n✓ Matrix A render complete.');
+  }
+  const file = path.join(projectDir, 'project.json');
+  assert.equal(fs.existsSync(file), false, `Refusing to replace an existing test project: ${file}`);
+  fs.writeFileSync(file, JSON.stringify(project, null, 2), 'utf8');
+  return projectDir;
+}
 
-  const probeA = await probeMedia(outputA);
-  const volA = await measureAudioVolume(outputA);
-  assert.strictEqual(probeA.width, 1920);
-  assert.strictEqual(probeA.height, 1080);
-  assert.strictEqual(probeA.fps, 30);
-  assert.strictEqual(probeA.videoCodec, 'h264');
-  assert.strictEqual(probeA.audioCodec, 'aac');
-  assert.strictEqual(volA.isSilent, false, 'Matrix A must be audible');
-  assert.ok(volA.meanVolumeDb > -35, `Matrix A mean volume should be audible (> -35 dB), got ${volA.meanVolumeDb} dB`);
-  console.log(`✓ Matrix A Verified: 1920x1080 @ 30 FPS, Size: ${(probeA.fileSize / 1024).toFixed(1)} KB, Mean Vol: ${volA.meanVolumeDb} dB, Max: ${volA.maxVolumeDb} dB\n`);
-
-  // --------------------------------------------------------------------------
-  // Matrix B: EasyModerator 9:16 Vertical (Responsive Layout & Readable Captions)
-  // --------------------------------------------------------------------------
-  console.log('--- Matrix B: EasyModerator 9:16 Vertical Story ---');
-  const projB = createEasyModeratorProject();
-  projB.scenes = projB.scenes.slice(0, 3);
-  projB.scenes[0].durationSeconds = 4.0;
-  projB.scenes[1].durationSeconds = 4.5;
-  projB.scenes[2].durationSeconds = 4.0;
-  projB.assets.push({
-    id: 'voice-s0-b',
-    kind: 'voice',
-    file: voiceA0Path,
-    durationSeconds: ttsA0.durationSeconds
-  });
-  projB.scenes[0].narrationAssetId = 'voice-s0-b';
-  projB.scenes[0].narrationDurationSeconds = ttsA0.durationSeconds;
-
-  const compB = compileComposition({ project: projB, targetId: 'portrait' });
-  const outputB = path.join(EXPORTS_DIR, 'matrix-b-easymoderator-9x16.mp4');
-  if (fs.existsSync(outputB)) fs.unlinkSync(outputB);
-
-  const audioB = resolveProjectAudio(projB);
-  console.log(`Rendering Matrix B (1080x1920 @ 30 FPS, ${compB.totalFrames} frames)...`);
-  const resB = await renderVideo({
-    compositionHtml: compB.html,
-    target: compB.target,
-    totalFrames: compB.totalFrames,
-    totalDuration: compB.totalDuration,
-    outputPath: outputB,
-    tempParentDir: RENDERS_DIR,
-    audioTracks: audioB.audioTracks,
-    audioPath: audioB.audioPath,
-    audioConfig: audioB.audioConfig,
-    onProgress: (p) => {
-      if (p.currentFrame % 50 === 0 || p.currentFrame === p.totalFrames) {
-        process.stdout.write(`  Render B Progress: ${p.percent}% (${p.currentFrame}/${p.totalFrames})\r`);
-      }
+function addNarrationAssets(project, projectDir, scripts) {
+  let sceneStart = 0;
+  const audioTracks = [];
+  for (const scene of project.scenes) {
+    const narrationText = scripts[scene.id];
+    if (narrationText) {
+      const filename = `voice-${scene.id}-${randomUUID()}.wav`;
+      const voice = localNarration(narrationText, path.join(projectDir, 'assets', filename));
+      const assetId = `voice-${scene.id}`;
+      project.assets.push({ id: assetId, kind: 'voice', file: `assets/${filename}`, durationSeconds: voice.durationSeconds, source: 'locally_imported_voice' });
+      scene.narrationText = narrationText;
+      scene.narrationAssetId = assetId;
+      scene.narrationDurationSeconds = voice.durationSeconds;
+      scene.isApproved = true;
+      scene.approvalStatus = 'approved';
+      audioTracks.push({ id: assetId, type: 'voice', path: voice.path, startTime: sceneStart + 0.08, duration: voice.durationSeconds, volume: 1 });
     }
+    sceneStart += Number(scene.durationSeconds) || 4;
+  }
+  return audioTracks;
+}
+
+function projectForRender(project, projectDir) {
+  const renderProject = structuredClone(project);
+  for (const asset of renderProject.assets || []) {
+    const ext = path.extname(asset.file || '').toLowerCase();
+    if (!['.png', '.jpg', '.jpeg', '.webp', '.svg'].includes(ext)) continue;
+    const imagePath = path.join(projectDir, asset.file);
+    const mime = ext === '.svg' ? 'image/svg+xml' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : `image/${ext.slice(1)}`;
+    asset.file = `data:${mime};base64,${fs.readFileSync(imagePath).toString('base64')}`;
+  }
+  return renderProject;
+}
+
+async function renderProof(label, project, projectDir, targetId, audioTracks = [], audioPath = null) {
+  const composition = compileComposition({ project: projectForRender(project, projectDir), targetId });
+  const outputPath = path.join(storage.exports, `v003-${label}-${randomUUID()}.mp4`);
+  assert.equal(fs.existsSync(outputPath), false, `Refusing to replace existing video output: ${outputPath}`);
+  const result = await renderVideo({
+    compositionHtml: composition.html,
+    target: composition.target,
+    totalFrames: composition.totalFrames,
+    totalDuration: composition.totalDuration,
+    outputPath,
+    tempParentDir: storage.renders,
+    audioTracks,
+    audioPath,
+    audioConfig: project.audio || {}
   });
-  console.log('\n✓ Matrix B render complete.');
-
-  const probeB = await probeMedia(outputB);
-  const volB = await measureAudioVolume(outputB);
-  assert.strictEqual(probeB.width, 1080);
-  assert.strictEqual(probeB.height, 1920);
-  assert.strictEqual(probeB.fps, 30);
-  assert.strictEqual(probeB.videoCodec, 'h264');
-  assert.strictEqual(probeB.audioCodec, 'aac');
-  assert.strictEqual(volB.isSilent, false, 'Matrix B must be audible');
-  console.log(`✓ Matrix B Verified: 1080x1920 @ 30 FPS, Size: ${(probeB.fileSize / 1024).toFixed(1)} KB, Mean Vol: ${volB.meanVolumeDb} dB\n`);
-
-  // --------------------------------------------------------------------------
-  // Matrix C: Unrelated Generic Brand in 4:5 Format (No EasyModerator Leakage)
-  // --------------------------------------------------------------------------
-  console.log('--- Matrix C: Unrelated Generic Brand (SyntraDesk AI 4:5) ---');
-  const projC = createBlankProject('SyntraDesk AI Support Showcase', 'en');
-  projC.brand = {
-    name: 'SyntraDesk AI',
-    primaryColor: '#0A0F1D',
-    backgroundColor: '#0A0F1D',
-    textColor: '#F8FAFC',
-    accentColor: '#10B981',
-    latinFontFamily: 'Plus Jakarta Sans',
-    stylePreset: 'future_tech'
+  assert.equal(result.success, true);
+  const probe = await probeMedia(outputPath);
+  const volume = await measureAudioVolume(outputPath);
+  const silence = await detectSilence(outputPath, -40, 0.5);
+  assert.equal(probe.videoCodec, 'h264');
+  assert.equal(probe.width, composition.target.width);
+  assert.equal(probe.height, composition.target.height);
+  assert.equal(probe.fps, composition.target.fps);
+  assert.equal(probe.audioCodec, 'aac');
+  assert.ok(probe.duration >= composition.totalDuration - 0.15);
+  const record = {
+    label, outputPath, width: probe.width, height: probe.height, fps: probe.fps,
+    durationSeconds: Number(probe.duration.toFixed(2)), fileSizeBytes: probe.fileSize,
+    videoCodec: probe.videoCodec, audioCodec: probe.audioCodec,
+    meanVolumeDb: volume.meanVolumeDb, maxVolumeDb: volume.maxVolumeDb,
+    isSilent: volume.isSilent, silenceIntervals: silence.silenceIntervals.length
   };
-  projC.creative = {
-    objective: 'conversion',
-    audience: 'E-commerce operations managers',
-    keyMessage: 'Zero missed support tickets with AI routing in 3 seconds',
-    tone: 'Confident, modern, enterprise',
-    cta: {
-      label: 'Deploy SyntraDesk Free',
-      destination: 'https://syntradesk.ai'
-    },
-    productTruthProfile: [
-      {
-        id: 'c-truth-1',
-        category: 'metric',
-        statement: '3-second SLA on multi-channel ticket categorization',
-        verificationStatus: 'verified_live'
-      }
-    ]
-  };
-  projC.scenes = [
-    {
-      id: 'syntra-s1',
-      kind: 'kinetic_text',
-      durationSeconds: 4.0,
-      eyebrow: 'SUPPORT SPEED',
-      headline: 'Unanswered tickets cost you customer loyalty.',
-      subheadline: 'Every delayed response pushes buyers to competitors.',
-      highlightWords: ['loyalty', 'delayed'],
-      motion: { entrance: 'stagger_words', exit: 'fade' }
-    },
-    {
-      id: 'syntra-s2',
-      kind: 'solution',
-      durationSeconds: 4.5,
-      eyebrow: 'AUTOMATED INTELLIGENCE',
-      headline: 'SyntraDesk routes support requests in 3 seconds.',
-      subheadline: 'Accurate triage with full human supervisor controls.',
-      highlightWords: ['3 seconds', 'Accurate'],
-      motion: { entrance: 'mask_reveal', exit: 'fade' }
-    },
-    {
-      id: 'syntra-s3',
-      kind: 'cta',
-      durationSeconds: 4.0,
-      eyebrow: 'SCALE SUPPORT',
-      headline: 'Transform your customer response speed today.',
-      ctaLabel: 'Deploy SyntraDesk Free',
-      ctaDestination: 'https://syntradesk.ai',
-      motion: { entrance: 'fade_up', exit: 'fade' }
-    }
+  proofResults.push(record);
+  console.log(`${label}: ${outputPath} | ${probe.width}x${probe.height}@${probe.fps} | ${probe.duration.toFixed(2)}s | ${probe.videoCodec}/${probe.audioCodec} | ${volume.meanVolumeDb} dB mean`);
+  return { outputPath, probe, volume, composition };
+}
+
+function easyModeratorMatrixProject() {
+  const project = createEasyModeratorProject();
+  project.project.id = `v003-easymoderator-${randomUUID()}`;
+  project.project.name = 'EasyModerator Bold & Future-Facing Proof';
+  project.template.id = 'guided_product_story';
+  project.creative.keyMessage = 'Use the approved EasyModerator product story and supplied demonstration image.';
+  project.creative.productTruthProfile = [];
+  project.audio = { mode: 'voice_and_music', muteAll: false, musicVolume: 0.08, voiceVolume: 1, duckMusicUnderVoice: true, targetLufs: -16, musicAssetId: 'music' };
+  project.scenes = [
+    { id: 'hook', kind: 'kinetic_text', durationSeconds: 8, eyebrow: 'EASYMODERATOR', headline: 'Too many customer messages?', subheadline: 'কথোপকথনের গল্প, আপনার তথ্য দিয়ে', highlightWords: ['customer messages'], layout: 'centered', motion: { entrance: 'stagger_words', emphasis: 'highlight', exit: 'fade', transition: 'crossfade', cameraPreset: 'none', intensity: 0.8 } },
+    { id: 'problem', kind: 'problem', durationSeconds: 7, eyebrow: 'YOUR STORY', headline: 'Every business has a different story.', subheadline: 'Use claims you can support with evidence.', highlightWords: ['different story'], layout: 'centered', motion: { entrance: 'slide_left', emphasis: 'none', exit: 'fade', transition: 'wipe_left', cameraPreset: 'slow_pan', intensity: 0.65 } },
+    { id: 'demo', kind: 'ui_demo', durationSeconds: 8, eyebrow: 'SUPPLIED SCREEN EXAMPLE', headline: 'EasyModerator interface preview', subheadline: 'Confirm current product behavior before publishing.', mediaAssetIds: ['inbox'], layout: 'device_mockup', deviceFrame: 'browser_window', motion: { entrance: 'mask_reveal', emphasis: 'none', exit: 'fade', transition: 'zoom', cameraPreset: 'pan_and_scan', intensity: 0.6 } },
+    { id: 'cta', kind: 'cta', durationSeconds: 7, eyebrow: 'EASYMODERATOR', headline: 'Manage conversations. Stay in control.', subheadline: '', ctaLabel: 'Learn more', ctaDestination: '', mediaAssetIds: ['logo'], layout: 'centered', motion: { entrance: 'fade_up', emphasis: 'none', exit: 'fade', transition: 'cut', cameraPreset: 'none', intensity: 0.6 } }
   ];
+  return project;
+}
 
-  // Synthesize English voice for Scene 1
-  const ttsC = await synthesizeSpeechGemini({
-    text: 'Unanswered tickets cost you customer loyalty. SyntraDesk routes support requests in 3 seconds.',
-    voice: 'Aoede',
-    cacheDir: CACHE_DIR
-  });
-  const voiceCPath = path.join(CACHE_DIR, 'matrix-c-voice.wav');
-  fs.writeFileSync(voiceCPath, ttsC.wavBuffer);
-  projC.assets.push({
-    id: 'voice-syntra',
-    kind: 'voice',
-    file: voiceCPath,
-    durationSeconds: ttsC.durationSeconds
-  });
-  projC.scenes[0].narrationAssetId = 'voice-syntra';
-  projC.scenes[0].narrationDurationSeconds = ttsC.durationSeconds;
-  projC.audio = {
-    mode: 'voice_and_music',
-    muteAll: false,
-    musicVolume: 0.15,
-    voiceVolume: 1.0,
-    duckMusicUnderVoice: true,
-    targetLufs: -16
-  };
+function unrelatedBrandProject() {
+  const project = createBlankProject('Northstar Paper Test Fixture', 'en');
+  project.project.id = `v003-northstar-${randomUUID()}`;
+  project.project.name = 'Northstar Paper Story';
+  project.template.id = 'app_showcase';
+  project.brand = { name: 'Northstar Paper', tagline: '', primaryColor: '#16324F', backgroundColor: '#F5F1E8', textColor: '#18212B', accentColor: '#E76F51', latinFontFamily: 'Inter', banglaFontFamily: 'Noto Sans Bengali', fontWeight: 700, cornerRadiusPx: 12, stylePreset: 'light_editorial' };
+  project.creative.keyMessage = 'A neutral fictional brand fixture for testing brand isolation.';
+  project.creative.cta = { label: '', destination: '' };
+  project.audio = { mode: 'voice_and_music', muteAll: false, musicVolume: 0, voiceVolume: 1, duckMusicUnderVoice: false, targetLufs: -16 };
+  project.scenes = [
+    { id: 'hook', kind: 'kinetic_text', durationSeconds: 7, headline: 'Make room for your next idea.', subheadline: 'Northstar Paper', highlightWords: ['next idea'], motion: { entrance: 'fade_up', emphasis: 'highlight', exit: 'fade', transition: 'crossfade', cameraPreset: 'none', intensity: 0.6 } },
+    { id: 'story', kind: 'feature', durationSeconds: 7, headline: 'A page for the thought you want to keep.', subheadline: 'Add your own product details here.', motion: { entrance: 'slide_right', emphasis: 'none', exit: 'fade', transition: 'wipe_right', cameraPreset: 'slow_pan', intensity: 0.6 } },
+    { id: 'close', kind: 'cta', durationSeconds: 6, headline: 'Write your next line.', subheadline: 'Northstar Paper', ctaLabel: 'Explore the story', ctaDestination: '', motion: { entrance: 'scale_pop', emphasis: 'none', exit: 'fade', transition: 'cut', cameraPreset: 'none', intensity: 0.6 } }
+  ];
+  return project;
+}
 
-  const compC = compileComposition({ project: projC, targetId: 'portrait_4_5' });
-  const outputC = path.join(EXPORTS_DIR, 'matrix-c-generic-brand-4x5.mp4');
-  if (fs.existsSync(outputC)) fs.unlinkSync(outputC);
+test('A-F video matrix renders actual local H.264/AAC outputs without cloud calls or destructive paths', async () => {
+  assert.ok(storage.root.toLowerCase().startsWith('e:\\growthstudio\\test-runs\\'), `Tests must use isolated E-drive storage, got ${storage.root}`);
+  fs.mkdirSync(storage.projects, { recursive: true });
+  fs.mkdirSync(storage.exports, { recursive: true });
 
-  const audioC = resolveProjectAudio(projC);
-  console.log(`Rendering Matrix C (1080x1350 @ 25 FPS, ${compC.totalFrames} frames)...`);
-  const resC = await renderVideo({
-    compositionHtml: compC.html,
-    target: compC.target,
-    totalFrames: compC.totalFrames,
-    totalDuration: compC.totalDuration,
-    outputPath: outputC,
-    tempParentDir: RENDERS_DIR,
-    audioTracks: audioC.audioTracks,
-    audioPath: audioC.audioPath,
-    audioConfig: audioC.audioConfig,
-    onProgress: (p) => {
-      if (p.currentFrame % 50 === 0 || p.currentFrame === p.totalFrames) {
-        process.stdout.write(`  Render C Progress: ${p.percent}% (${p.currentFrame}/${p.totalFrames})\r`);
-      }
-    }
-  });
-  console.log('\n✓ Matrix C render complete.');
-
-  const probeC = await probeMedia(outputC);
-  const volC = await measureAudioVolume(outputC);
-  assert.strictEqual(probeC.width, 1080);
-  assert.strictEqual(probeC.height, 1350);
-  assert.strictEqual(probeC.fps, 25);
-  assert.strictEqual(probeC.videoCodec, 'h264');
-  assert.strictEqual(probeC.audioCodec, 'aac');
-  assert.strictEqual(volC.isSilent, false);
-  console.log(`✓ Matrix C Verified: 1080x1350 @ 25 FPS, Size: ${(probeC.fileSize / 1024).toFixed(1)} KB, Mean Vol: ${volC.meanVolumeDb} dB\n`);
-
-  // --------------------------------------------------------------------------
-  // Matrix D: Offline Re-export (Network disconnected / API keys disabled)
-  // --------------------------------------------------------------------------
-  console.log('--- Matrix D: Offline Re-Export (Keys Disconnected & Cached Voice) ---');
-  const savedOpenAiKey = process.env.CONTENT_STUDIO_KEY;
-  const savedGeminiKey = process.env.CONTENT_STUDIO_GEMINI;
-  process.env.CONTENT_STUDIO_KEY = '';
-  process.env.CONTENT_STUDIO_GEMINI = '';
+  const originalOpenAIKey = process.env.CONTENT_STUDIO_KEY;
+  const originalGeminiKey = process.env.CONTENT_STUDIO_GEMINI;
 
   try {
-    // Reopen and recompile using cached voice
-    const projD = JSON.parse(JSON.stringify(projC));
-    projD.project.name = 'SyntraDesk Offline Re-export';
-    projD.scenes[0].headline = 'Offline Re-Export Verified Cleanly';
-
-    const compD = compileComposition({ project: projD, targetId: 'portrait_4_5' });
-    const outputD = path.join(EXPORTS_DIR, 'matrix-d-offline-reexport.mp4');
-    if (fs.existsSync(outputD)) fs.unlinkSync(outputD);
-
-    const audioD = resolveProjectAudio(projD);
-    console.log(`Rendering Matrix D offline (${compD.totalFrames} frames)...`);
-    const resD = await renderVideo({
-      compositionHtml: compD.html,
-      target: compD.target,
-      totalFrames: compD.totalFrames,
-      totalDuration: compD.totalDuration,
-      outputPath: outputD,
-      tempParentDir: RENDERS_DIR,
-      audioTracks: audioD.audioTracks,
-      audioPath: audioD.audioPath,
-      audioConfig: audioD.audioConfig,
-      onProgress: (p) => {
-        if (p.currentFrame % 50 === 0 || p.currentFrame === p.totalFrames) {
-          process.stdout.write(`  Render D Progress: ${p.percent}% (${p.currentFrame}/${p.totalFrames})\r`);
-        }
-      }
+    // A/B — one EasyModerator story in 16:9 and 9:16 with the selected brand kit, supplied image, narration and music.
+    const emProject = easyModeratorMatrixProject();
+    const emDir = path.join(storage.projects, emProject.project.id);
+    fs.mkdirSync(emDir, { recursive: false });
+    emProject.assets.find(asset => asset.id === 'music').file = 'assets/background-music.wav';
+    for (const scene of emProject.scenes) {
+      if (scene.id === 'demo') scene.claimDisclaimer = 'Supplied screen example; current behavior not independently verified.';
+    }
+    const emTracks = addNarrationAssets(emProject, emDir, {
+      hook: 'Running a small business brings many conversations.',
+      problem: 'Every product and every business has its own story.',
+      demo: 'This supplied screen is an example. Confirm current product behavior before publishing.',
+      cta: 'Manage conversations. Stay in control.'
     });
-    console.log('\n✓ Matrix D offline render complete.');
+    persistProject(emProject);
+    const emMusic = path.join(emDir, 'assets', 'background-music.wav');
+    const a = await renderProof('A-easymoderator-landscape', emProject, emDir, 'landscape', emTracks, emMusic);
+    assert.equal(a.probe.width, 1920);
+    assert.equal(a.probe.height, 1080);
+    assert.ok(a.probe.duration >= 29.5 && a.probe.duration <= 30.5);
+    assert.equal(a.volume.isSilent, false);
+    assert.ok(a.volume.meanVolumeDb > -35);
 
-    const probeD = await probeMedia(outputD);
-    const volD = await measureAudioVolume(outputD);
-    assert.strictEqual(probeD.width, 1080);
-    assert.strictEqual(probeD.height, 1350);
-    assert.strictEqual(volD.isSilent, false, 'Offline export must remain audible via cached assets');
-    console.log(`✓ Matrix D Verified: 1080x1350, Size: ${(probeD.fileSize / 1024).toFixed(1)} KB, Mean Vol: ${volD.meanVolumeDb} dB\n`);
+    const b = await renderProof('B-easymoderator-portrait', emProject, emDir, 'portrait', emTracks, emMusic);
+    assert.equal(b.probe.width, 1080);
+    assert.equal(b.probe.height, 1920);
+    assert.equal(b.probe.fps, 30);
+    assert.equal(b.volume.isSilent, false);
+    assert.ok(emProject.scenes.some(scene => /কথোপকথনের/.test(scene.subheadline)));
+
+    // C — a distinct brand in 4:5, with no EasyModerator/DukanBot name or palette leakage.
+    const genericProject = unrelatedBrandProject();
+    const genericDir = path.join(storage.projects, genericProject.project.id);
+    fs.mkdirSync(genericDir, { recursive: false });
+    const cTracks = addNarrationAssets(genericProject, genericDir, {
+      hook: 'Make room for your next idea.',
+      story: 'A page for the thought you want to keep.',
+      close: 'Write your next line.'
+    });
+    persistProject(genericProject);
+    const serializedGeneric = JSON.stringify(genericProject);
+    assert.equal(serializedGeneric.includes('EasyModerator'), false);
+    assert.equal(serializedGeneric.includes('DukanBot'), false);
+    assert.equal(genericProject.brand.primaryColor, '#16324F');
+    const c = await renderProof('C-northstar-generic-4x5', genericProject, genericDir, 'portrait_4_5', cTracks);
+    assert.equal(c.probe.width, 1080);
+    assert.equal(c.probe.height, 1350);
+    assert.equal(c.probe.fps, 25);
+    assert.equal(c.volume.isSilent, false);
+
+    // D — reopen the saved project with both API keys removed and fetch blocked; edit one caption and re-export with local voice.
+    process.env.CONTENT_STUDIO_KEY = '';
+    process.env.CONTENT_STUDIO_GEMINI = '';
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error('Unexpected network access during offline re-export.'); };
+    try {
+      const reloaded = JSON.parse(fs.readFileSync(path.join(genericDir, 'project.json'), 'utf8'));
+      assert.equal(reloaded.project.id, genericProject.project.id);
+      reloaded.scenes[0].headline = 'Make room for your next good idea.';
+      fs.writeFileSync(path.join(genericDir, 'project.json'), JSON.stringify(reloaded, null, 2), 'utf8');
+      const reopened = JSON.parse(fs.readFileSync(path.join(genericDir, 'project.json'), 'utf8'));
+      const d = await renderProof('D-offline-cached-voice-reexport', reopened, genericDir, 'portrait_4_5', cTracks);
+      assert.equal(d.volume.isSilent, false);
+      assert.ok(d.probe.fileSize > 10000);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    // E — manual workflow, no API key, and no forced AI step.
+    const manual = createBlankProject('Manual Local-Only Test', 'en');
+    manual.project.id = `v003-manual-${randomUUID()}`;
+    manual.project.name = 'Manual Local-Only Test';
+    manual.creative.keyMessage = 'A test project created and edited without an AI provider.';
+    manual.brand.name = 'Manual Test Brand';
+    manual.audio = { mode: 'silent', muteAll: true };
+    manual.scenes = [
+      { id: 'manual-hook', kind: 'kinetic_text', durationSeconds: 3, headline: 'Write a clear opening line.', motion: { entrance: 'stagger_words', exit: 'fade' } },
+      { id: 'manual-close', kind: 'cta', durationSeconds: 3, headline: 'Add your next step.', ctaLabel: '', ctaDestination: '', motion: { entrance: 'fade_up', exit: 'fade' } }
+    ];
+    const manualDir = path.join(storage.projects, manual.project.id);
+    fs.mkdirSync(manualDir, { recursive: false });
+    persistProject(manual);
+    const e = await renderProof('E-manual-no-key', manual, manualDir, 'landscape');
+    assert.equal(e.probe.width, 1920);
+    assert.equal(e.probe.height, 1080);
+
+    // F — fake provider contract proves only the requested scene changes; unchanged voice assets stay byte-identical.
+    const selective = unrelatedBrandProject();
+    selective.project.id = `v003-selective-${randomUUID()}`;
+    selective.project.name = 'Selective Rewrite Fixture';
+    const selectiveDir = path.join(storage.projects, selective.project.id);
+    fs.mkdirSync(selectiveDir, { recursive: false });
+    const fTracks = addNarrationAssets(selective, selectiveDir, {
+      hook: 'Make room for your next idea.',
+      story: 'A page for the thought you want to keep.',
+      close: 'Write your next line.'
+    });
+    selective.scenes[1].isApproved = false;
+    selective.scenes[1].approvalStatus = 'draft';
+    persistProject(selective);
+    const unaffectedBefore = [selective.scenes[0], selective.scenes[2]].map(scene => JSON.stringify(scene));
+    const audioBefore = selective.assets.filter(asset => asset.kind === 'voice').map(asset => createHash('sha256').update(fs.readFileSync(path.join(selectiveDir, asset.file))).digest('hex'));
+    const template = listTemplates().find(item => item.id === selective.template.id);
+    const provider = {
+      async rewriteSelectedScene(scene) {
+        assert.equal(scene.id, 'story');
+        return {
+          data: {
+            sceneId: scene.id, chapterNumber: 1, chapterTitle: 'A day with an idea', sceneRole: 'solution', sceneKind: 'feature', durationSeconds: 7,
+            onscreen: { eyebrow: '', headline: 'Keep the thought that matters.', subheadline: 'A page for your ideas.', highlightWords: ['thought'], ctaLabel: '', ctaDestination: '', statValue: '', statLabel: '' },
+            narration: { language: 'en', text: scene.narrationText, pronunciationNotes: '' },
+            visuals: { assetIds: [], deviceType: 'none', layout: 'centered', calloutLabel: '' },
+            motion: { entrance: 'slide_right', emphasis: 'highlight', exit: 'fade', transition: 'wipe_right', cameraPreset: 'slow_pan', intensity: 0.65 },
+            claims: []
+          },
+          modelUsed: 'local-test-provider', usage: { basis: 'local_test' }, estimatedCostUsd: 0, cacheHit: false
+        };
+      }
+    };
+    assert.ok(template);
+    const orchestrator = new CreativeOrchestrator({ storagePaths: storage, provider });
+    const rewritten = await orchestrator.rewriteScene(selective.project.id, 'story', 'Clarify the message', { consentToSend: true });
+    assert.equal(rewritten.scene.id, 'story');
+    assert.equal(rewritten.scene.headline, 'Keep the thought that matters.');
+    assert.equal(rewritten.scene.narrationAssetId, selective.scenes[1].narrationAssetId);
+    assert.deepEqual([rewritten.project.scenes[0], rewritten.project.scenes[2]].map(scene => JSON.stringify(scene)), unaffectedBefore);
+    const audioAfter = rewritten.project.assets.filter(asset => asset.kind === 'voice').map(asset => createHash('sha256').update(fs.readFileSync(path.join(selectiveDir, asset.file))).digest('hex'));
+    assert.deepEqual(audioAfter, audioBefore);
+    assert.ok(runPreflight(rewritten.project).errors.some(message => message.includes('unapproved AI draft')));
+    rewritten.scene.isApproved = true;
+    rewritten.scene.approvalStatus = 'approved';
+    const f = await renderProof('F-selective-scene-rewrite', rewritten.project, selectiveDir, 'portrait', fTracks);
+    assert.equal(f.volume.isSilent, false);
+
+    const reportPath = path.join(storage.root, 'video-matrix-results.json');
+    assert.equal(fs.existsSync(reportPath), false);
+    fs.writeFileSync(reportPath, JSON.stringify(proofResults, null, 2), 'utf8');
+    console.log(`A-F evidence recorded: ${reportPath}`);
   } finally {
-    process.env.CONTENT_STUDIO_KEY = savedOpenAiKey;
-    process.env.CONTENT_STUDIO_GEMINI = savedGeminiKey;
+    if (originalOpenAIKey === undefined) delete process.env.CONTENT_STUDIO_KEY;
+    else process.env.CONTENT_STUDIO_KEY = originalOpenAIKey;
+    if (originalGeminiKey === undefined) delete process.env.CONTENT_STUDIO_GEMINI;
+    else process.env.CONTENT_STUDIO_GEMINI = originalGeminiKey;
   }
-
-  // --------------------------------------------------------------------------
-  // Matrix E: Manual / No-Key Workflow (Zero Forced AI)
-  // --------------------------------------------------------------------------
-  console.log('--- Matrix E: Manual / No-Key Workflow ---');
-  const projE = createBlankProject('Pure Manual No-Key Promo', 'en');
-  projE.audio = { mode: 'silent', muteAll: true };
-  projE.scenes = [
-    {
-      id: 'manual-s1',
-      kind: 'kinetic_text',
-      durationSeconds: 3.0,
-      eyebrow: 'MANUAL WORKFLOW',
-      headline: 'Built entirely without artificial intelligence.',
-      highlightWords: ['entirely'],
-      motion: { entrance: 'stagger_words', exit: 'fade' }
-    },
-    {
-      id: 'manual-s2',
-      kind: 'cta',
-      durationSeconds: 3.0,
-      eyebrow: 'RELIABLE ENGINE',
-      headline: 'Deterministic, offline rendering on local hardware.',
-      highlightWords: ['Deterministic'],
-      motion: { entrance: 'fade_up', exit: 'fade' }
-    }
-  ];
-
-  const compE = compileComposition({ project: projE, targetId: 'landscape' });
-  const outputE = path.join(EXPORTS_DIR, 'matrix-e-manual-no-key.mp4');
-  if (fs.existsSync(outputE)) fs.unlinkSync(outputE);
-
-  console.log(`Rendering Matrix E (${compE.totalFrames} frames)...`);
-  const resE = await renderVideo({
-    compositionHtml: compE.html,
-    target: compE.target,
-    totalFrames: compE.totalFrames,
-    totalDuration: compE.totalDuration,
-    outputPath: outputE,
-    tempParentDir: RENDERS_DIR,
-    audioConfig: compE.audio,
-    onProgress: (p) => {
-      if (p.currentFrame % 40 === 0 || p.currentFrame === p.totalFrames) {
-        process.stdout.write(`  Render E Progress: ${p.percent}% (${p.currentFrame}/${p.totalFrames})\r`);
-      }
-    }
-  });
-  console.log('\n✓ Matrix E render complete.');
-
-  const probeE = await probeMedia(outputE);
-  assert.strictEqual(probeE.width, 1920);
-  assert.strictEqual(probeE.height, 1080);
-  assert.strictEqual(probeE.videoCodec, 'h264');
-  console.log(`✓ Matrix E Verified: 1920x1080 @ 30 FPS, Size: ${(probeE.fileSize / 1024).toFixed(1)} KB\n`);
-
-  // --------------------------------------------------------------------------
-  // Matrix F: AI Selective Scene Regeneration (Hash Tracking)
-  // --------------------------------------------------------------------------
-  console.log('--- Matrix F: AI Selective Scene Regeneration & Hash Invariance ---');
-  const projF = JSON.parse(JSON.stringify(projC));
-  projF.project.id = `matrix-f-proj-${Date.now()}`;
-  const projDirF = path.join(storage.projects, projF.project.id);
-  fs.mkdirSync(projDirF, { recursive: true });
-  fs.writeFileSync(path.join(projDirF, 'project.json'), JSON.stringify(projF, null, 2), 'utf8');
-
-  // Compute baseline content hashes for scenes 1, 2, and 3
-  const hashObject = (obj) => crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex');
-  const hashScene1Before = hashObject(projF.scenes[0]);
-  const hashScene2Before = hashObject(projF.scenes[1]);
-  const hashScene3Before = hashObject(projF.scenes[2]);
-
-  console.log('Baseline scene hashes:');
-  console.log(`  Scene 1 hash: ${hashScene1Before.slice(0, 16)}...`);
-  console.log(`  Scene 2 hash: ${hashScene2Before.slice(0, 16)}...`);
-  console.log(`  Scene 3 hash: ${hashScene3Before.slice(0, 16)}...`);
-
-  // Selective rewrite of Scene 1 only
-  const orchestrator = new CreativeOrchestrator({ storagePaths: storage });
-  console.log('Rewriting Scene 1 with custom revision prompt using gpt-6-luna...');
-  const rewriteRes = await orchestrator.rewriteScene(
-    projF.project.id,
-    projF.scenes[0].id,
-    'Make the headline even more urgent: Slow customer support is killing your conversion rate.',
-    { model: 'gpt-6-luna' }
-  );
-
-  const updatedProjF = JSON.parse(fs.readFileSync(path.join(projDirF, 'project.json'), 'utf8'));
-  const hashScene1After = hashObject(updatedProjF.scenes[0]);
-  const hashScene2After = hashObject(updatedProjF.scenes[1]);
-  const hashScene3After = hashObject(updatedProjF.scenes[2]);
-
-  console.log('Post-rewrite scene hashes:');
-  console.log(`  Scene 1 hash: ${hashScene1After.slice(0, 16)}... (CHANGED)`);
-  console.log(`  Scene 2 hash: ${hashScene2After.slice(0, 16)}... (IDENTICAL)`);
-  console.log(`  Scene 3 hash: ${hashScene3After.slice(0, 16)}... (IDENTICAL)`);
-
-  assert.notStrictEqual(hashScene1Before, hashScene1After, 'Scene 1 must be revised');
-  assert.strictEqual(hashScene2Before, hashScene2After, 'Scene 2 must remain 100% UNTOUCHED');
-  assert.strictEqual(hashScene3Before, hashScene3After, 'Scene 3 must remain 100% UNTOUCHED');
-  console.log('✓ Proven selective regeneration: Unaffected scenes preserved with identical SHA-256 hashes');
-
-  // Export Matrix F
-  const compF = compileComposition({ project: updatedProjF, targetId: 'portrait_4_5' });
-  const outputF = path.join(EXPORTS_DIR, 'matrix-f-selective-regen.mp4');
-  if (fs.existsSync(outputF)) fs.unlinkSync(outputF);
-
-  const audioF = resolveProjectAudio(updatedProjF);
-  console.log(`Rendering Matrix F (${compF.totalFrames} frames)...`);
-  const resF = await renderVideo({
-    compositionHtml: compF.html,
-    target: compF.target,
-    totalFrames: compF.totalFrames,
-    totalDuration: compF.totalDuration,
-    outputPath: outputF,
-    tempParentDir: RENDERS_DIR,
-    audioTracks: audioF.audioTracks,
-    audioPath: audioF.audioPath,
-    audioConfig: audioF.audioConfig,
-    onProgress: (p) => {
-      if (p.currentFrame % 50 === 0 || p.currentFrame === p.totalFrames) {
-        process.stdout.write(`  Render F Progress: ${p.percent}% (${p.currentFrame}/${p.totalFrames})\r`);
-      }
-    }
-  });
-  console.log('\n✓ Matrix F render complete.');
-
-  const probeF = await probeMedia(outputF);
-  assert.strictEqual(probeF.width, 1080);
-  assert.strictEqual(probeF.height, 1350);
-  console.log(`✓ Matrix F Verified: 1080x1350, Size: ${(probeF.fileSize / 1024).toFixed(1)} KB\n`);
-
-  // Clean up temporary project F
-  fs.rmSync(projDirF, { recursive: true, force: true });
-
-  console.log('================================================================');
-  console.log('   ✓✓✓ ALL 6 VIDEO MATRIX TEST GATES (A - F) VERIFIED PASS!    ');
-  console.log('================================================================\n');
-}
-
-runVideoProofMatrix().catch(err => {
-  console.error('\nMatrix test failed:', err);
-  process.exit(1);
 });

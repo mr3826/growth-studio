@@ -8,5 +8,13 @@
   "requiredInputs": ["brand.name", "creative.keyMessage", "creative.cta.label"],
   "optionalAssets": ["logo", "image", "music", "voiceover"],
   "defaultScenes": ["hook", "pain", "reveal", "phone_demo", "dashboard_demo", "stat_beat", "trust", "cta"],
-  "motionPresets": ["stagger_words", "highlight_sweep", "fade_up", "slide_left", "slide_right", "scale_pop", "mask_reveal", "device_float"]
+  "motionPresets": ["stagger_words", "fade_up", "slide_left", "slide_right", "scale_pop"],
+  "layoutPresets": ["centered", "device_mockup"],
+  "motionOptions": {
+    "entrance": ["stagger_words", "fade_up", "slide_left", "slide_right", "scale_pop"],
+    "emphasis": ["highlight", "none"],
+    "exit": ["fade", "slide_left", "zoom_out"],
+    "transition": ["cut", "crossfade", "wipe_left", "wipe_right", "zoom"],
+    "camera": ["none", "slow_pan", "zoom_in", "pan_and_scan"]
+  }
 }

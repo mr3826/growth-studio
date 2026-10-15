@@ -128,11 +128,11 @@ export async function fetchNarrationStatus(): Promise<NarrationStatus> {
   return res.json();
 }
 
-export async function previewNarration(text: string, voice = 'Puck'): Promise<Blob> {
+export async function previewNarration(projectId: string, sceneId: string, voice = 'Puck', consentToSend = false): Promise<Blob> {
   const res = await fetch(`${API_BASE}/narration/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, voice })
+    body: JSON.stringify({ projectId, sceneId, voice, consentToSend })
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -143,7 +143,7 @@ export async function previewNarration(text: string, voice = 'Puck'): Promise<Bl
 
 export async function generateNarration(
   projectId: string,
-  options: { sceneId?: string; allScenes?: boolean; voice?: string; fitDuration?: boolean }
+  options: { sceneId?: string; allScenes?: boolean; voice?: string; fitDuration?: boolean; consentToSend?: boolean }
 ): Promise<{ success: boolean; generated: any[]; project: Project }> {
   const res = await fetch(`${API_BASE}/projects/${projectId}/narration/generate`, {
     method: 'POST',
@@ -179,12 +179,14 @@ export async function fetchCreativeStatus(): Promise<CreativeProviderStatus> {
 export async function generateCreativeConcepts(
   projectId: string,
   brief: any,
-  model?: string
+  model?: string,
+  consentToSend = false,
+  forceRegenerate = false
 ): Promise<{ success: boolean; concepts: CreativeConcept[]; project: Project; usage: any; durationMs: number }> {
   const res = await fetch(`${API_BASE}/projects/${projectId}/creative/concepts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ brief, model })
+    body: JSON.stringify({ brief, model, consentToSend, forceRegenerate })
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -196,12 +198,15 @@ export async function generateCreativeConcepts(
 export async function compileCreativeStoryboard(
   projectId: string,
   conceptId: string,
-  model?: string
+  model?: string,
+  consentToSend = false,
+  replaceScenesConfirmed = false,
+  forceRegenerate = false
 ): Promise<{ success: boolean; project: Project; usage: any }> {
   const res = await fetch(`${API_BASE}/projects/${projectId}/creative/storyboard`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ conceptId, model })
+    body: JSON.stringify({ conceptId, model, consentToSend, replaceScenesConfirmed, forceRegenerate })
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -215,12 +220,13 @@ export async function rewriteCreativeScene(
   sceneId: string,
   instruction: string,
   model?: string,
-  force = false
+  consentToSend = false,
+  forceRegenerate = false
 ): Promise<{ success: boolean; scene: any; project: Project; usage: any }> {
   const res = await fetch(`${API_BASE}/projects/${projectId}/creative/scenes/${sceneId}/rewrite`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ instruction, model, force })
+    body: JSON.stringify({ instruction, model, consentToSend, forceRegenerate })
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -231,12 +237,14 @@ export async function rewriteCreativeScene(
 
 export async function reviewCreativeProject(
   projectId: string,
-  model?: string
+  model?: string,
+  consentToSend = false,
+  forceRegenerate = false
 ): Promise<{ success: boolean; audit: CreativeAudit; usage: any }> {
   const res = await fetch(`${API_BASE}/projects/${projectId}/creative/review`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model })
+    body: JSON.stringify({ model, consentToSend, forceRegenerate })
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Project } from '../types';
 import { rewriteCreativeScene } from '../api';
 import {
@@ -30,18 +30,29 @@ export const SceneRewriteModal: React.FC<SceneRewriteModalProps> = ({
   const scene = (project.scenes || []).find(s => s.id === sceneId);
   const [instruction, setInstruction] = useState<string>('');
   const [model, setModel] = useState<string>('gpt-6-luna');
-  const [forceUnlock, setForceUnlock] = useState<boolean>(false);
+  const [consentToOpenAi, setConsentToOpenAi] = useState<boolean>(false);
   const [isRewriting, setIsRewriting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [rewrittenScene, setRewrittenScene] = useState<any | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      setConsentToOpenAi(false);
+      setRewrittenScene(null);
+    }
+  }, [isOpen, sceneId]);
+
   if (!isOpen || !scene) return null;
 
-  const isLocked = scene.isApproved || scene.approvalStatus === 'locked';
+  const isLocked = scene.isApproved || ['approved', 'locked'].includes(scene.approvalStatus || '');
 
   const handleRewrite = async () => {
     if (!instruction.trim()) {
       setErrorMessage('Please enter an instruction for rewriting this scene.');
+      return;
+    }
+    if (!consentToOpenAi) {
+      setErrorMessage('Confirm the OpenAI text-sharing consent before rewriting this scene.');
       return;
     }
 
@@ -53,7 +64,7 @@ export const SceneRewriteModal: React.FC<SceneRewriteModalProps> = ({
         sceneId,
         instruction.trim(),
         model,
-        forceUnlock
+        consentToOpenAi
       );
       if (res.success && res.scene) {
         setRewrittenScene(res.scene);
@@ -138,9 +149,9 @@ export const SceneRewriteModal: React.FC<SceneRewriteModalProps> = ({
             <div className="flex flex-wrap gap-1.5">
               {[
                 'Make the headline much punchier and shorter',
-                'Emphasize 3-second response time and efficiency',
+                'Use only product facts already supported by approved evidence',
                 'Rewrite in authentic urban Bengali',
-                'Focus on customer frustration and urgency',
+                'Make the supplied audience problem clearer without adding claims',
                 'Strengthen Call-To-Action clarity'
               ].map((preset, idx) => (
                 <button
@@ -169,7 +180,7 @@ export const SceneRewriteModal: React.FC<SceneRewriteModalProps> = ({
             />
           </div>
 
-          {/* Model & Lock options */}
+          {/* Model selection */}
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-400">Model:</label>
@@ -180,22 +191,17 @@ export const SceneRewriteModal: React.FC<SceneRewriteModalProps> = ({
               >
                 <option value="gpt-6-luna">GPT-6 Luna (Fast Iteration ~5s)</option>
                 <option value="gpt-6.1-sol">GPT-6.1 Sol (Flagship Creative)</option>
-                <option value="gpt-4o-mini">GPT-4o Mini (Budget)</option>
+                <option value="gpt-6-astra">GPT-6 Astra (Premium)</option>
               </select>
             </div>
 
-            {isLocked && (
-              <label className="flex items-center gap-1.5 text-xs text-amber-300 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={forceUnlock}
-                  onChange={(e) => setForceUnlock(e.target.checked)}
-                  className="rounded border-slate-700 text-indigo-600 focus:ring-0"
-                />
-                <span>Force rewrite locked scene</span>
-              </label>
-            )}
           </div>
+
+          <label className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-100">
+            <input type="checkbox" checked={consentToOpenAi} onChange={e => setConsentToOpenAi(e.target.checked)} className="mt-0.5 accent-amber-500" />
+            <span><strong>Online — OpenAI.</strong> Allow the selected scene text, revision instruction and product truth evidence to be sent for this rewrite. Media assets remain local. Request cap: up to $0.10; project cap applies.</span>
+          </label>
+          {isLocked && <p className="text-xs text-amber-300">This scene is approved or locked. Close this dialog, return it to Draft, then request a rewrite.</p>}
 
           {/* Rewritten Result Preview if ready */}
           {rewrittenScene && (
@@ -244,7 +250,7 @@ export const SceneRewriteModal: React.FC<SceneRewriteModalProps> = ({
             <button
               type="button"
               onClick={handleRewrite}
-              disabled={isRewriting || (isLocked && !forceUnlock)}
+              disabled={isRewriting || isLocked || !consentToOpenAi}
               className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/20 disabled:opacity-50"
             >
               <Sparkles className={`w-3.5 h-3.5 ${isRewriting ? 'animate-spin' : ''}`} />

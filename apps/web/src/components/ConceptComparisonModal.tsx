@@ -38,50 +38,23 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
   const [providerStatus, setProviderStatus] = useState<CreativeProviderStatus | null>(null);
   const [activeTab, setActiveTab] = useState<'brief' | 'truth' | 'concepts'>('brief');
   const [selectedModel, setSelectedModel] = useState<string>('gpt-6.1-sol');
+  const [consentToOpenAi, setConsentToOpenAi] = useState(false);
 
   // Brief state
   const [brandName, setBrandName] = useState<string>(project.brand?.name || project.project?.clientOrProduct || '');
-  const [category, setCategory] = useState<string>(project.creative?.category || 'SaaS / Web App');
-  const [audience, setAudience] = useState<string>(project.creative?.audience || 'Modern Teams & Business Owners');
-  const [problem, setProblem] = useState<string>(project.creative?.painPoint || 'Repetitive questions flood team inboxes causing delayed responses');
-  const [keyMessage, setKeyMessage] = useState<string>(project.creative?.keyMessage || 'Instant automated triage with human oversight and zero hallucinations');
-  const [benefitsText, setBenefitsText] = useState<string>((project.creative?.benefits || [
-    'One-click draft approvals for support agents',
-    'Full audit trail and policy grounding',
-    '3x faster customer response velocity'
-  ]).join('\n'));
+  const [category, setCategory] = useState<string>(project.creative?.category || '');
+  const [audience, setAudience] = useState<string>(project.creative?.audience || '');
+  const [problem, setProblem] = useState<string>(project.creative?.painPoint || '');
+  const [keyMessage, setKeyMessage] = useState<string>(project.creative?.keyMessage || '');
+  const [benefitsText, setBenefitsText] = useState<string>((project.creative?.benefits || []).join('\n'));
   const [language, setLanguage] = useState<string>(project.project?.language || 'en');
   const [targetDuration, setTargetDuration] = useState<number>(30);
-  const [ctaLabel, setCtaLabel] = useState<string>(project.creative?.cta?.label || 'Get Started');
-  const [ctaDestination, setCtaDestination] = useState<string>(project.creative?.cta?.destination || 'https://example.com');
+  const [ctaLabel, setCtaLabel] = useState<string>(project.creative?.cta?.label || '');
+  const [ctaDestination, setCtaDestination] = useState<string>(project.creative?.cta?.destination || '');
 
   // Product Truth Profile state
   const [truthItems, setTruthItems] = useState<ProductTruthItem[]>(
-    project.creative?.productTruthProfile && project.creative.productTruthProfile.length > 0
-      ? project.creative.productTruthProfile
-      : [
-          {
-            id: 'truth-1',
-            category: 'feature',
-            statement: 'Automated response suggestions are generated in under 3 seconds',
-            verificationStatus: 'verified_live',
-            notes: 'Benchmarked in production v1.2'
-          },
-          {
-            id: 'truth-2',
-            category: 'integration',
-            statement: 'Integrates natively with Shopify, Slack, and email channels',
-            verificationStatus: 'verified_live',
-            notes: 'OAuth flow live'
-          },
-          {
-            id: 'truth-3',
-            category: 'policy',
-            statement: 'Never answers questions about custom pricing or contracts without human review',
-            verificationStatus: 'verified_live',
-            notes: 'Guardrail policy active'
-          }
-        ]
+    project.creative?.productTruthProfile || []
   );
 
   // Concepts state
@@ -97,6 +70,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
         setProviderStatus(st);
         if (st.activeModel) setSelectedModel(st.activeModel);
       }).catch(console.error);
+      setConsentToOpenAi(false);
 
       fetchCreativeUsage(project.project.id).then(setBudgetUsage).catch(() => {});
       if (project.creative?.concepts && project.creative.concepts.length > 0) {
@@ -113,7 +87,8 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
       id: `truth-${Date.now().toString(36)}`,
       category: 'feature',
       statement: '',
-      verificationStatus: 'approved_demo',
+      verificationStatus: 'unknown',
+      isApproved: false,
       notes: ''
     };
     setTruthItems([...truthItems, newItem]);
@@ -127,7 +102,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
     setTruthItems(truthItems.map(item => item.id === id ? { ...item, ...updates } : item));
   };
 
-  const handleGenerateConcepts = async () => {
+  const handleGenerateConcepts = async (forceRegenerate = false) => {
     setIsGenerating(true);
     setErrorMessage(null);
 
@@ -147,7 +122,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
     };
 
     try {
-      const res = await generateCreativeConcepts(project.project.id, brief, selectedModel);
+      const res = await generateCreativeConcepts(project.project.id, brief, selectedModel, consentToOpenAi, forceRegenerate);
       if (res.success && res.concepts) {
         setConcepts(res.concepts);
         setActiveTab('concepts');
@@ -162,10 +137,16 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
   };
 
   const handleSelectConcept = async (conceptId: string) => {
+    if (!consentToOpenAi) {
+      setErrorMessage('Review and confirm the OpenAI data-sharing consent before building a storyboard.');
+      return;
+    }
+    const replaceScenesConfirmed = (project.scenes || []).length === 0 || window.confirm('This will replace the current scene list with an editable storyboard draft. Approved scenes and their audio will be replaced. Continue?');
+    if (!replaceScenesConfirmed) return;
     setIsCompiling(conceptId);
     setErrorMessage(null);
     try {
-      const res = await compileCreativeStoryboard(project.project.id, conceptId, selectedModel);
+      const res = await compileCreativeStoryboard(project.project.id, conceptId, selectedModel, consentToOpenAi, replaceScenesConfirmed);
       if (res.success && res.project) {
         onStoryboardCompiled(res.project);
         onClose();
@@ -195,7 +176,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
                 </span>
                 {providerStatus?.configured ? (
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3" /> OpenAI Connected
+                    <ShieldCheck className="w-3 h-3" /> Key configured · API not checked
                   </span>
                 ) : (
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
@@ -277,11 +258,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
             >
-              <option value="gpt-6.1-sol">GPT-6.1 Sol (Flagship Creative)</option>
-              <option value="gpt-6-luna">GPT-6 Luna (Fast Iteration)</option>
-              <option value="gpt-6-astra">GPT-6 Astra (Deep Polish)</option>
-              <option value="gpt-4o">GPT-4o (Production)</option>
-              <option value="gpt-4o-mini">GPT-4o Mini (Budget)</option>
+              {providerStatus?.models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
             </select>
           </div>
         </div>
@@ -307,7 +284,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
                     type="text"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 outline-none"
                     value={brandName}
-                    placeholder="e.g. EasyModerator, CloudPulse, OmniDesk"
+                    placeholder="Enter the product or brand name"
                     onChange={(e) => setBrandName(e.target.value)}
                   />
                 </div>
@@ -422,6 +399,10 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
           {/* TAB 2: PRODUCT TRUTH PROFILE */}
           {activeTab === 'truth' && (
             <div className="space-y-4 max-w-4xl mx-auto">
+              <label className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-100">
+                <input type="checkbox" checked={consentToOpenAi} onChange={e => setConsentToOpenAi(e.target.checked)} className="mt-0.5 accent-amber-500" />
+                <span><strong>Online — OpenAI.</strong> I approve sending the brief, truth statements, language, CTA, selected concept and scene text for the creative action. Project media files are not uploaded. Calls may incur usage charges; per-request caps are up to $0.15 for concepts and $0.20 for a storyboard, with a $${budgetUsage?.budgetCapUsd?.toFixed(2) || '1.00'} project cap.</span>
+              </label>
               <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-start gap-3">
                 <Info className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" />
                 <div className="text-xs text-indigo-200">
@@ -433,7 +414,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
                 {truthItems.map((item, index) => (
                   <div
                     key={item.id}
-                    className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl flex items-center gap-3 transition hover:border-slate-700"
+                    className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl flex items-start gap-3 transition hover:border-slate-700"
                   >
                     <span className="text-xs font-mono text-slate-500 w-6 text-center">#{index + 1}</span>
 
@@ -450,17 +431,24 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
                       </select>
                     </div>
 
-                    <div className="flex-1">
+                    <div className="flex-1 space-y-2">
                       <input
                         type="text"
                         className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 outline-none focus:border-indigo-500"
-                        placeholder="Statement (e.g. Automated response in under 3 seconds)"
+                        placeholder="Product fact or claim"
                         value={item.statement}
                         onChange={(e) => handleUpdateTruthItem(item.id, { statement: e.target.value })}
                       />
+                      <input
+                        type="text"
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-[11px] text-slate-300 outline-none focus:border-indigo-500"
+                        placeholder="Source or evidence details"
+                        value={item.notes || ''}
+                        onChange={e => handleUpdateTruthItem(item.id, { notes: e.target.value })}
+                      />
                     </div>
 
-                    <div className="w-32 flex-shrink-0">
+                    <div className="w-36 flex-shrink-0 space-y-2">
                       <select
                         className={`w-full border text-[11px] font-semibold rounded px-2 py-1 outline-none ${
                           item.verificationStatus === 'verified_live'
@@ -477,6 +465,10 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
                         <option value="planned">Planned Feature</option>
                         <option value="unknown">Unknown</option>
                       </select>
+                      <label className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <input type="checkbox" checked={Boolean(item.isApproved)} onChange={e => handleUpdateTruthItem(item.id, { isApproved: e.target.checked })} className="accent-emerald-500" />
+                        Approved for marketing
+                      </label>
                     </div>
 
                     <button
@@ -512,7 +504,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
                   <button
                     type="button"
                     onClick={handleGenerateConcepts}
-                    disabled={isGenerating || !providerStatus?.configured}
+                    disabled={isGenerating || !providerStatus?.configured || !consentToOpenAi}
                     className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-500/20 transition flex items-center gap-2 disabled:opacity-50"
                   >
                     <Sparkles className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
@@ -526,6 +518,10 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
           {/* TAB 3: 3 CONCEPTS COMPARISON */}
           {activeTab === 'concepts' && (
             <div className="space-y-6">
+              <label className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-100">
+                <input type="checkbox" checked={consentToOpenAi} onChange={e => setConsentToOpenAi(e.target.checked)} className="mt-0.5 accent-amber-500" />
+                <span><strong>Online — OpenAI.</strong> Allow this request to send the selected concept, product brief, truth evidence and scene text. Project assets stay local. Per-request caps are up to $0.15 for concepts and $0.20 for a storyboard; project cap ${budgetUsage?.budgetCapUsd?.toFixed(2) || '1.00'}.</span>
+              </label>
               {concepts.length === 0 ? (
                 <div className="text-center py-12 space-y-4">
                   <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400">
@@ -539,7 +535,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
                   </div>
                   <button
                     onClick={handleGenerateConcepts}
-                    disabled={isGenerating || !providerStatus?.configured}
+                    disabled={isGenerating || !providerStatus?.configured || !consentToOpenAi}
                     className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 mx-auto disabled:opacity-50"
                   >
                     <Sparkles className="w-4 h-4" />
@@ -623,7 +619,7 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
                         <div className="pt-6">
                           <button
                             onClick={() => handleSelectConcept(concept.id)}
-                            disabled={Boolean(isCompiling)}
+                    disabled={Boolean(isCompiling) || !consentToOpenAi}
                             className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition ${
                               isSelected
                                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
@@ -660,8 +656,8 @@ export const ConceptComparisonModal: React.FC<ConceptComparisonModalProps> = ({
                     Want different creative ideas? You can regenerate concepts at any time.
                   </span>
                   <button
-                    onClick={handleGenerateConcepts}
-                    disabled={isGenerating || !providerStatus?.configured}
+                    onClick={() => handleGenerateConcepts(true)}
+                    disabled={isGenerating || !providerStatus?.configured || !consentToOpenAi}
                     className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-2"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />

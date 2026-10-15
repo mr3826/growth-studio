@@ -85,8 +85,8 @@ export const AiUsageModal: React.FC<AiUsageModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-white">AI Spend & Token Receipts</h3>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Hard Cap Protected
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3" /> Request and project caps
                 </span>
               </div>
               <p className="text-xs text-slate-400">
@@ -152,6 +152,7 @@ export const AiUsageModal: React.FC<AiUsageModalProps> = ({
                 <p className="text-[11px] text-slate-400">
                   By default, each project is limited to $1.00 USD to prevent accidental or runaway spend. You can adjust this limit here.
                 </p>
+                <p className="text-[11px] text-slate-500">Per-request caps: up to $0.10 for scene rewrite, $0.15 for concepts/review, and $0.20 for storyboards. Token counts use provider-reported values when available; local USD totals are estimates, not invoices.</p>
                 <div className="flex items-center gap-3 pt-1">
                   <div className="relative w-36">
                     <span className="absolute left-3 top-2 text-xs text-slate-400 font-mono">$</span>
@@ -202,7 +203,7 @@ export const AiUsageModal: React.FC<AiUsageModalProps> = ({
                             </span>
                           </div>
                           <div className="text-[10px] text-slate-500">
-                            {new Date(rec.timestamp).toLocaleTimeString()} • {rec.totalTokens} tokens ({rec.inputTokens} in / {rec.outputTokens} out) • {(rec.durationMs / 1000).toFixed(1)}s
+                            {new Date(rec.timestamp).toLocaleTimeString()} • {rec.totalTokens} {rec.usageBasis === 'estimated_from_text' ? 'estimated' : ''} tokens ({rec.inputTokens} in / {rec.outputTokens} out) • {rec.cached ? 'cache hit' : (rec.durationMs / 1000).toFixed(1) + 's'}
                           </div>
                         </div>
 

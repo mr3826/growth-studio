@@ -1,5 +1,6 @@
 import { buildServer } from '../apps/local-server/src/index.js';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 
 async function testServer() {
   console.log('--- Testing Fastify Server API & Negative Gates ---');
@@ -28,21 +29,28 @@ async function testServer() {
   const resStarters = await server.inject({ method: 'GET', url: '/api/starters' });
   assert.equal(resStarters.statusCode, 200);
   const starters = JSON.parse(resStarters.body);
-  assert.equal(starters.length, 4);
+  assert.equal(starters.length, 5);
   assert.ok(starters.some(s => s.id === 'guided_bangla'));
-  console.log('✓ GET /api/starters OK (4 starters including guided_bangla)');
+  assert.ok(starters.some(s => s.id === 'easymoderator'));
+  console.log('✓ GET /api/starters OK (5 generic, language, app, and brand starters)');
 
   // Test 4: Create Bangla Guided Story Starter Project
   const resCreateBangla = await server.inject({
     method: 'POST',
     url: '/api/projects',
-    payload: { preset: 'guided_bangla' }
+    payload: { preset: 'guided_bangla', name: `Bangla Starter Test ${randomUUID()}` }
   });
   assert.equal(resCreateBangla.statusCode, 201);
   const banglaProj = JSON.parse(resCreateBangla.body);
   const banglaProjId = banglaProj.project.id;
   assert.ok(banglaProjId);
   assert.equal(banglaProj.template.id, 'guided_product_story');
+  assert.equal(banglaProj.brand.name, 'আপনার ব্র্যান্ড');
+  assert.equal(banglaProj.creative.cta.destination, '');
+  assert.equal(JSON.stringify(banglaProj).includes('DukanBot'), false);
+  banglaProj.creative.cta.label = 'আরও জানুন';
+  const saveBangla = await server.inject({ method: 'PUT', url: `/api/projects/${banglaProjId}`, payload: banglaProj });
+  assert.equal(saveBangla.statusCode, 200, saveBangla.body);
   console.log(`✓ POST /api/projects with 'guided_bangla' OK (created '${banglaProjId}')`);
 
   // Test 5: Preflight Check for 4:5 Target
@@ -84,6 +92,12 @@ async function testServer() {
   // --- NEGATIVE TESTS ---
   console.log('\n--- Running Negative & Security Tests ---');
 
+  const resBadOrigin = await server.inject({ method: 'GET', url: '/api/health', headers: { origin: 'http://attacker.invalid' } });
+  assert.equal(resBadOrigin.statusCode, 403);
+  const resBadHost = await server.inject({ method: 'GET', url: '/api/health', headers: { host: 'growth-studio.attacker.invalid' } });
+  assert.equal(resBadHost.statusCode, 403);
+  console.log('✓ Negative: hostile Origin and DNS-rebinding Host are rejected before route handling');
+
   // Negative Test 1: Invalid project schema rejected with 400
   const resBadSchema = await server.inject({
     method: 'PUT',
@@ -119,6 +133,7 @@ async function testServer() {
   assert.equal(resCancel404.statusCode, 404);
   console.log('✓ Negative: Cancelling non-existent render job returns 404');
 
+  await server.inject({ method: 'DELETE', url: `/api/projects/${banglaProjId}` });
   await server.close();
   console.log('\n>>> ALL SERVER & NEGATIVE TESTS PASSED SUCCESSFULLY! <<<');
 }

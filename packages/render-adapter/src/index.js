@@ -483,6 +483,7 @@ export async function renderVideo({
 
 export {
   pcmToWav,
+  GEMINI_TTS_MODEL,
   GEMINI_TTS_VOICES,
   isGeminiTtsAvailable,
   synthesizeSpeechGemini

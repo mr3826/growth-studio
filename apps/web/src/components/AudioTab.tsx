@@ -45,13 +45,16 @@ export const AudioTab: React.FC<AudioTabProps> = ({ project, onChange }) => {
   const audioMode = audio.muteAll ? 'silent' : (audio.mode || 'voice_and_music');
 
   const handleTestVoice = async () => {
+    const selected = (project.scenes || []).find(scene => (scene.isApproved || ['approved', 'locked'].includes(scene.approvalStatus || '')) && scene.narrationText?.trim());
+    if (!selected) {
+      alert('Approve a non-empty scene narration script before previewing a Gemini voice.');
+      return;
+    }
+    if (!window.confirm(`Online — Gemini: send this approved narration text for a voice preview?\n\n${selected.narrationText}\n\nNo project images or assets are sent.`)) return;
     setIsPlayingPreview(true);
     setStatusMessage('Generating voice sample...');
     try {
-      const sampleText = project.project.language === 'bn'
-        ? 'গ্রোথ স্টুডিওতে স্বাগতম। আপনার প্রমোশনাল ভিডিও তৈরি করুন নিমেষেই।'
-        : 'Welcome to Growth Studio. Create professional promotional videos with audible voiceover.';
-      const blob = await previewNarration(sampleText, selectedVoice);
+      const blob = await previewNarration(project.project.id, selected.id, selectedVoice, true);
       const url = URL.createObjectURL(blob);
       const sound = new Audio(url);
       sound.onended = () => {
@@ -68,13 +71,21 @@ export const AudioTab: React.FC<AudioTabProps> = ({ project, onChange }) => {
   };
 
   const handleGenerateAll = async () => {
+    const notReady = (project.scenes || []).find(scene => !(scene.isApproved || ['approved', 'locked'].includes(scene.approvalStatus || '')) || !scene.narrationText?.trim());
+    if (notReady) {
+      alert(`Approve a non-empty narration script for every scene first. Check scene ${notReady.id}.`);
+      return;
+    }
+    const scripts = (project.scenes || []).map(scene => `${scene.id}: ${scene.narrationText}`).join('\n');
+    if (!window.confirm(`Online — Gemini: send all approved narration scripts for speech generation?\n\n${scripts}\n\nNo project images or assets are sent.`)) return;
     setIsGeneratingAll(true);
     setStatusMessage('Generating voiceover for all scenes with Gemini TTS...');
     try {
       const res = await generateNarration(project.project.id, {
         allScenes: true,
         voice: selectedVoice,
-        fitDuration: true
+        fitDuration: true,
+        consentToSend: true
       });
       if (res.success && res.project) {
         onChange(res.project);
@@ -150,7 +161,7 @@ export const AudioTab: React.FC<AudioTabProps> = ({ project, onChange }) => {
                   <Mic size={14} /> Gemini AI Voice Narration
                 </span>
                 <span style={{ fontSize: 10, background: 'rgba(56,189,248,0.2)', color: '#38BDF8', padding: '2px 6px', borderRadius: 4 }}>
-                  ONLINE
+                  OPTIONAL · GEMINI
                 </span>
               </div>
 
@@ -163,11 +174,11 @@ export const AudioTab: React.FC<AudioTabProps> = ({ project, onChange }) => {
                     value={selectedVoice}
                     onChange={(e) => updateNarration('voice', e.target.value)}
                   >
-                    <option value="Puck">Puck (Engaging & Crisp - Male)</option>
-                    <option value="Charon">Charon (Deep & Authoritative - Male)</option>
-                    <option value="Kore">Kore (Warm & Professional - Female)</option>
-                    <option value="Fenrir">Fenrir (Energetic & Dynamic - Male)</option>
-                    <option value="Aoede">Aoede (Smooth & Melodic - Female)</option>
+                    <option value="Puck">Puck (Upbeat)</option>
+                    <option value="Charon">Charon (Informative)</option>
+                    <option value="Kore">Kore (Firm)</option>
+                    <option value="Fenrir">Fenrir (Excitable)</option>
+                    <option value="Aoede">Aoede (Breezy)</option>
                   </select>
                   <button
                     type="button"

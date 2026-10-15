@@ -6,11 +6,12 @@ async function discoverGeminiModels() {
     console.log('CONTENT_STUDIO_GEMINI: NOT CONFIGURED');
     return;
   }
-  console.log('CONTENT_STUDIO_GEMINI: CONFIGURED (length: ' + apiKey.length + ')');
+  console.log('CONTENT_STUDIO_GEMINI: CONFIGURED');
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-    const res = await fetch(url);
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+      headers: { 'x-goog-api-key': apiKey }
+    });
     if (!res.ok) {
       console.log(`Models discovery failed: HTTP ${res.status} ${res.statusText}`);
       const errText = await res.text();

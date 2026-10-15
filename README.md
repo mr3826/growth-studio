@@ -1,96 +1,74 @@
-# Kinetic Studio V0.01 — Offline Promotional Video Generator
+# Growth Studio V0.03
 
-**Kinetic Studio** is a completely offline, template-driven local web application that transforms user briefs, copy, brand assets, and animation preferences into high-impact promotional MP4 videos.
+Growth Studio is a local, template-based promotional video editor for apps, SaaS products, services, and brands. Create a project from a product brief, build an editable storyboard, add approved narration and local media, preview it, then render an MP4 on the workstation.
 
----
+The seven-stage workflow keeps the brief, template, storyboard, brand and media, motion, preview, and export in one project. The three installed templates are `guided_product_story`, `bold_kinetic`, and `app_showcase`; export targets include 9:16, 16:9, and 4:5.
 
-## ⚡ Highlights
+## AI and offline use
 
-- **100% Offline Runtime**: Requires zero cloud accounts, third-party APIs, or external network connectivity.
-- **Local Full-Stack**: Built with React 18, Vite, TypeScript, and a Fastify server bound strictly to `127.0.0.1:4317`.
-- **Production Bold Kinetic Template**: High-contrast, typographic promotional template with support for kinetic text hooks, problem-solution statements, UI mockups, and CTA closings.
-- **Deterministic Frame Engine**: Every frame is mathematically computed by timeline position (`seekToFrame`), completely eliminating wall-clock jitter.
-- **Real MP4 Rendering**: Local rendering pipeline utilizing Headless Chromium and FFmpeg with H.264 video encoding and AAC audio mixing.
-- **Dual Aspect Ratios**: Generates both Portrait `1080×1920` (9:16) and Landscape `1920×1080` (16:9) at 30 FPS.
-- **Interactive UI**: Live seekable preview player, aspect ratio toggle, brand kit customizer, scene manager, asset uploader, preflight validation modal, and real-time SSE render logs.
+OpenAI Creative Director features are optional. The Fastify server reads `CONTENT_STUDIO_KEY` from its process environment and sends a request only after a user starts an AI action and confirms the content to send. The key is never needed in the browser. Gemini speech generation is also optional and uses the server-side `CONTENT_STUDIO_GEMINI` environment variable; approved narration is sent through the current [Gemini speech API](https://ai.google.dev/gemini-api/docs/generate-content/speech-generation). Imported or cached voice files, project editing, local preview, and Chromium/FFmpeg export remain available without either API.
 
----
+EasyModerator Bold & Future-Facing is a selectable brand kit. New and unrelated projects can use their own palettes, assets, copy, and templates.
 
-## 🛠️ Architecture Overview
+## Architecture decisions
 
-```text
-growth-studio/
-├── apps/
-│   ├── local-server/         # Fastify API coordinator running on 127.0.0.1:4317
-│   └── web/                  # React 18 + Vite local UI with dark design system
-├── packages/
-│   ├── contracts/            # JSON Schema 2020-12 validator & project presets
-│   ├── template-engine/      # Bold Kinetic responsive compiler & deterministic timeline engine
-│   └── render-adapter/       # Offline Chromium frame-by-frame capture & FFmpeg MP4 pipeline
-├── templates/
-│   └── bold_kinetic/         # Production template manifest and modular scenes
-├── data/
-│   ├── projects/             # Local project storage, versioned snapshots, assets
-│   └── exports/              # Exported MP4 videos & UI screenshots
-└── tests/
-    ├── server.test.js        # Fastify API integration tests
-    ├── render.test.js        # Headless Chrome + FFmpeg rendering tests
-    ├── browser.test.js       # End-to-end browser UI automation tests
-    └── e2e.test.js           # Complete 7-stage pipeline verification
-```
+- OpenAI generates concepts and structured scene plans; the server validates those plans against the selected template, supported motions/transitions, available assets, and approved product facts.
+- The existing local template engine and Chromium/FFmpeg renderer turn approved editable scenes into video. This keeps composition reproducible and export available offline without asking an AI model to generate every frame.
+- Project briefs, product evidence, scene approval, assets, narration cache, and exports remain local. Provider calls are opt-in and report usage through local project receipts.
 
----
+## Requirements
 
-## 🚀 Getting Started
+- Node.js 22.12 or newer
+- FFmpeg and ffprobe on `PATH`
+- Google Chrome or Chromium installed locally
+- For the automated suites, a writable `E:\GrowthStudio` volume
 
-### Prerequisites
+## Install and run
 
-- [Node.js](https://nodejs.org/) (v20+)
-- [FFmpeg](https://ffmpeg.org/) (installed and available in system `PATH`)
-- Google Chrome or Chromium (installed locally)
-
-### Installation
-
-```bash
-# Install all dependencies across workspaces
+```powershell
 npm install
-
-# Build the frontend bundle
 npm run build
-```
-
-### Running Locally
-
-```bash
-# Start the local server
 npm start
 ```
 
-Open your browser and navigate to:
-👉 **[http://127.0.0.1:4317](http://127.0.0.1:4317)**
+Open [http://127.0.0.1:4317](http://127.0.0.1:4317). Set the optional API variables in the server process environment before starting it. Do not put API keys in project files or browser-side configuration.
 
----
+Projects, cached media, renders, and exports use the configured local storage root, normally `E:\GrowthStudio`. The app binds to loopback for local use.
 
-## 🧪 Testing & Verification
+## Verify
 
-Kinetic Studio comes with automated test suites verifying all aspects of the application:
-
-```bash
-# Run Fastify API tests
-node tests/server.test.js
-
-# Run rendering engine test (produces 1080x1920 sample MP4)
-node tests/render.test.js
-
-# Run Puppeteer browser UI automation test
-node tests/browser.test.js
-
-# Run full end-to-end pipeline verification (exports portrait & landscape MP4s and checks ffprobe metrics)
-node tests/e2e.test.js
+```powershell
+npm run build
+npm test
+npm run test:matrix
+npm run test:creative
 ```
 
----
+The test runner creates a new, uniquely named test directory under `E:\GrowthStudio\test-runs` for each run and preserves prior outputs. The full suite includes server, browser, audio-cache, contract, render, and export coverage. Video tests use the local renderer and validate the resulting MP4s with ffprobe and audio measurements.
 
-## 📄 License
+The live OpenAI integration check is opt-in and costs API usage. It requires the server-side `CONTENT_STUDIO_KEY` and an explicit test-run flag:
+
+```powershell
+$env:LIVE_OPENAI_TEST = '1'
+npm run test:creative:live
+Remove-Item Env:LIVE_OPENAI_TEST
+```
+
+This check sends only its bounded synthetic QA brief, never uploads images, and writes generated projects and video outputs to its isolated test directory.
+
+## Layout
+
+```text
+apps/local-server/       Fastify API, local persistence, optional AI providers
+apps/web/                React and Vite user interface
+packages/contracts/      Project schema, starter projects, storage paths
+packages/template-engine/Scene validation and deterministic composition compiler
+packages/render-adapter/ Local Chromium capture, FFmpeg, and audio helpers
+templates/               Supported templates and motion manifests
+tests/                   Automated contracts, browser, audio, render, and video checks
+docs/quality/             Baseline evidence and acceptance reports
+```
+
+## License
 
 Apache-2.0

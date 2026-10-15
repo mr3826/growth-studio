@@ -22,7 +22,7 @@ export const ProjectHomeStep: React.FC<ProjectHomeStepProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isCreating, setIsCreating] = useState<boolean>(false);
   const [newProjectName, setNewProjectName] = useState<string>('');
-  const [selectedStarterId, setSelectedStarterId] = useState<string>('guided_bangla');
+  const [selectedStarterId, setSelectedStarterId] = useState<string>('blank');
   const [isCreativeModalOpen, setIsCreativeModalOpen] = useState<boolean>(false);
 
   const refreshList = async () => {
@@ -77,19 +77,19 @@ export const ProjectHomeStep: React.FC<ProjectHomeStepProps> = ({
     <div className="step-container project-home-view">
       <div className="home-hero-banner">
         <div>
-          <h1 className="home-hero-title">Growth Studio V0.01</h1>
+          <h1 className="home-hero-title">Growth Studio V0.03</h1>
           <p className="home-hero-subtitle">
-            Offline, reference-aligned, template-based video generation for software, SaaS, mobile apps & brands.
+            Build an editable product story, then preview and render it locally with your chosen brand.
           </p>
         </div>
         <div className="system-status-badges">
           <span className="badge-chip storage-badge">
             <HardDrive className="w-4 h-4 text-emerald-400" />
-            <span>Storage: E:\GrowthStudio (388 GB Free)</span>
+            <span>Storage: configured local drive</span>
           </span>
           <span className="badge-chip offline-badge">
             <ShieldCheck className="w-4 h-4 text-sky-400" />
-            <span>100% Offline Runtime</span>
+            <span>Offline editing and local rendering</span>
           </span>
         </div>
       </div>
@@ -140,7 +140,7 @@ export const ProjectHomeStep: React.FC<ProjectHomeStepProps> = ({
             <input
               type="text"
               className="form-input"
-              placeholder="e.g. DukanBot Promo 2026"
+              placeholder="e.g. Your Product Spring Launch"
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
             />

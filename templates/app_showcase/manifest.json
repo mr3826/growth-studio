@@ -8,5 +8,13 @@
   "requiredInputs": ["brand.name", "creative.keyMessage", "creative.cta.label"],
   "optionalAssets": ["logo", "image", "music"],
   "defaultScenes": ["hook", "app_demo", "stat", "feature_zoom", "cta"],
-  "motionPresets": ["scale_pop", "device_float", "slide_left", "slide_right", "mask_reveal", "stagger_words"]
+  "motionPresets": ["stagger_words", "fade_up", "slide_left", "slide_right", "scale_pop"],
+  "layoutPresets": ["centered", "device_mockup"],
+  "motionOptions": {
+    "entrance": ["stagger_words", "fade_up", "slide_left", "slide_right", "scale_pop"],
+    "emphasis": ["highlight", "none"],
+    "exit": ["fade", "slide_left", "zoom_out"],
+    "transition": ["cut", "crossfade", "wipe_left", "wipe_right", "zoom"],
+    "camera": ["none", "slow_pan", "zoom_in", "pan_and_scan"]
+  }
 }
