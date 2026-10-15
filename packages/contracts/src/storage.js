@@ -182,3 +182,89 @@ export function cleanupRenderTemp(jobId, storagePaths = null) {
     }
   }
 }
+
+/**
+ * Returns path to persistent exports manifest JSON.
+ */
+export function getExportsManifestPath(storagePaths = null) {
+  const paths = storagePaths || resolveStoragePaths();
+  return path.join(paths.exports, 'exports-manifest.json');
+}
+
+/**
+ * Loads persistent exports manifest from disk.
+ */
+export function loadExportsManifest(storagePaths = null) {
+  const manifestPath = getExportsManifestPath(storagePaths);
+  if (!fs.existsSync(manifestPath)) {
+    return { version: '1.0.0', exports: [] };
+  }
+  try {
+    const raw = fs.readFileSync(manifestPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return {
+      version: parsed.version || '1.0.0',
+      exports: Array.isArray(parsed.exports) ? parsed.exports : []
+    };
+  } catch (err) {
+    console.error('Failed to parse exports manifest:', err.message);
+    return { version: '1.0.0', exports: [] };
+  }
+}
+
+/**
+ * Saves exports manifest atomically to disk.
+ */
+export function saveExportsManifest(storagePaths, manifest) {
+  const manifestPath = getExportsManifestPath(storagePaths);
+  const tempPath = `${manifestPath}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(manifest, null, 2), 'utf8');
+  fs.renameSync(tempPath, manifestPath);
+}
+
+/**
+ * Records a completed or updated export job in the persistent manifest.
+ */
+export function recordExportInManifest(storagePaths, jobRecord) {
+  const manifest = loadExportsManifest(storagePaths);
+  const jobId = jobRecord.id || jobRecord.jobId;
+  manifest.exports = manifest.exports.filter(e => e.jobId !== jobId);
+
+  let fileSize = 0;
+  if (jobRecord.metadata?.fileSize) {
+    fileSize = jobRecord.metadata.fileSize;
+  } else if (jobRecord.outputPath && fs.existsSync(jobRecord.outputPath)) {
+    try {
+      fileSize = fs.statSync(jobRecord.outputPath).size;
+    } catch (_) {}
+  }
+
+  manifest.exports.unshift({
+    jobId,
+    projectId: jobRecord.projectId,
+    targetId: jobRecord.targetId,
+    outputFileName: jobRecord.outputFileName,
+    outputPath: jobRecord.outputPath,
+    fileSize,
+    duration: jobRecord.metadata?.duration || 0,
+    fps: jobRecord.metadata?.fps || 30,
+    width: jobRecord.metadata?.width || 0,
+    height: jobRecord.metadata?.height || 0,
+    videoCodec: jobRecord.metadata?.videoCodec || 'h264',
+    audioCodec: jobRecord.metadata?.audioCodec || 'aac',
+    audioMetrics: jobRecord.metadata?.audioMetrics || null,
+    status: jobRecord.status || 'done',
+    createdAt: jobRecord.startedAt || new Date().toISOString(),
+    completedAt: jobRecord.completedAt || new Date().toISOString()
+  });
+
+  saveExportsManifest(storagePaths, manifest);
+}
+
+/**
+ * Returns all recorded exports for a specific project ID, sorted newest first.
+ */
+export function getProjectExports(storagePaths, projectId) {
+  const manifest = loadExportsManifest(storagePaths);
+  return manifest.exports.filter(e => e.projectId === projectId);
+}

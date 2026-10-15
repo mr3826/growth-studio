@@ -239,7 +239,7 @@ export interface RenderJob {
   id: string;
   projectId: string;
   targetId: string;
-  status: 'queued' | 'validating' | 'rendering' | 'verifying' | 'done' | 'failed' | 'cancelled';
+  status: 'queued' | 'validating' | 'rendering' | 'encoding' | 'verifying' | 'done' | 'failed' | 'cancelled';
   progress: number;
   currentFrame: number;
   totalFrames: number;
@@ -253,13 +253,36 @@ export interface RenderJob {
     fps: number;
     videoCodec: string;
     audioCodec: string;
-    frameCount: number;
+    frameCount?: number;
     fileSize: number;
+    audioMetrics?: any;
   };
   error?: string;
   logs: string[];
   startedAt: string;
   completedAt?: string;
+}
+
+export interface ExportRecord {
+  jobId: string;
+  projectId: string;
+  targetId: string;
+  outputFileName: string;
+  outputPath: string;
+  fileSize: number;
+  duration: number;
+  fps: number;
+  width: number;
+  height: number;
+  videoCodec: string;
+  audioCodec: string;
+  audioMetrics?: any;
+  status: string;
+  createdAt: string;
+  completedAt: string;
+  fileExists: boolean;
+  downloadUrl: string;
+  streamUrl: string;
 }
 
 export interface NarrationStatus {

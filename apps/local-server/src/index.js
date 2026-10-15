@@ -19,7 +19,11 @@ import {
   ensureStorageDirectories,
   preflightStorage,
   estimateRenderSpaceBytes,
-  cleanupRenderTemp
+  cleanupRenderTemp,
+  loadExportsManifest,
+  saveExportsManifest,
+  recordExportInManifest,
+  getProjectExports
 } from '@kinetic-studio/contracts';
 
 import {
@@ -33,6 +37,7 @@ import {
   getChromePath,
   renderVideo,
   probeMedia,
+  verifyMediaDecode,
   killProcessTree,
   pcmToWav,
   GEMINI_TTS_MODEL,
@@ -63,6 +68,46 @@ const WEB_DIST_DIR = path.join(ROOT_DIR, 'apps/web/dist');
 const renderJobs = new Map();
 const abortControllers = new Map();
 const jobEmitter = new EventEmitter();
+
+function hydrateRenderJobsFromManifest() {
+  try {
+    const manifest = loadExportsManifest(storagePaths);
+    for (const exp of (manifest.exports || [])) {
+      if (exp.outputPath && fs.existsSync(exp.outputPath) && exp.status === 'done') {
+        renderJobs.set(exp.jobId, {
+          id: exp.jobId,
+          projectId: exp.projectId,
+          targetId: exp.targetId,
+          status: 'done',
+          progress: 100,
+          currentFrame: 0,
+          totalFrames: 0,
+          percent: 100,
+          outputPath: exp.outputPath,
+          outputFileName: exp.outputFileName,
+          metadata: {
+            width: exp.width,
+            height: exp.height,
+            duration: exp.duration,
+            fps: exp.fps,
+            videoCodec: exp.videoCodec,
+            audioCodec: exp.audioCodec,
+            fileSize: exp.fileSize,
+            audioMetrics: exp.audioMetrics
+          },
+          error: null,
+          logs: ['Restored from persistent export history'],
+          startedAt: exp.createdAt,
+          completedAt: exp.completedAt
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Could not hydrate render jobs from manifest:', err.message);
+  }
+}
+hydrateRenderJobsFromManifest();
+
 const creativeOrchestrator = new CreativeOrchestrator({ storagePaths });
 const creativeRequestTimes = new Map();
 const creativeRequestsInFlight = new Set();
@@ -902,17 +947,71 @@ export async function buildServer() {
   fastify.post('/api/projects/:id/renders', async (request, reply) => {
     const { id } = request.params;
     const safeId = path.basename(id);
-    const { targetId = 'portrait' } = request.body || {};
+    const { targetId = 'portrait', project: clientProject } = request.body || {};
     const projFile = path.join(PROJECTS_DIR, safeId, 'project.json');
+
+    // 1. If client provided the latest project state, validate and synchronously persist it before rendering
+    if (clientProject && typeof clientProject === 'object') {
+      const validation = validateProjectSchema(clientProject);
+      if (!validation.valid) {
+        return reply.code(400).send({
+          error: 'Project schema validation failed',
+          details: validation.errors
+        });
+      }
+      const targetDir = path.join(PROJECTS_DIR, safeId);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+        fs.mkdirSync(path.join(targetDir, 'assets'), { recursive: true });
+        fs.mkdirSync(path.join(targetDir, 'snapshots'), { recursive: true });
+      }
+      fs.writeFileSync(projFile, JSON.stringify(clientProject, null, 2), 'utf8');
+      try {
+        const snapPath = path.join(targetDir, 'snapshots', `rev-${Date.now()}.json`);
+        fs.writeFileSync(snapPath, JSON.stringify(clientProject), 'utf8');
+      } catch (_) {}
+    }
+
     if (!fs.existsSync(projFile)) {
       return reply.code(404).send({ error: 'Project not found' });
     }
     const project = JSON.parse(fs.readFileSync(projFile, 'utf8'));
 
+    // 2. Prevent unintended duplicate export jobs for same project & target
+    for (const activeJob of renderJobs.values()) {
+      if (activeJob.projectId === safeId && activeJob.targetId === targetId &&
+          ['queued', 'validating', 'rendering', 'encoding', 'verifying'].includes(activeJob.status)) {
+        return reply.code(409).send({
+          error: `A render for target '${targetId}' is already in progress (job: ${activeJob.id}). Wait or cancel before queueing a new one.`,
+          jobId: activeJob.id
+        });
+      }
+    }
+
+    // 3. Prevent accidental overwrite of previous exports: archive existing file
     const fileStem = project.export?.fileStem || safeId;
     const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const outputFileName = `${fileStem}-${targetId}.mp4`;
     const outputPath = path.join(EXPORTS_DIR, outputFileName);
+
+    if (fs.existsSync(outputPath)) {
+      try {
+        const stat = fs.statSync(outputPath);
+        const timestamp = stat.mtime.toISOString().replace(/[:.]/g, '-');
+        const archiveName = `${fileStem}-${targetId}-${timestamp}.mp4`;
+        const archivePath = path.join(EXPORTS_DIR, archiveName);
+        fs.renameSync(outputPath, archivePath);
+        const manifest = loadExportsManifest(storagePaths);
+        const prev = manifest.exports.find(e => e.outputPath === outputPath);
+        if (prev) {
+          prev.outputPath = archivePath;
+          prev.outputFileName = archiveName;
+          saveExportsManifest(storagePaths, manifest);
+        }
+      } catch (err) {
+        console.warn('Could not archive previous output file:', err.message);
+      }
+    }
 
     const controller = new AbortController();
     abortControllers.set(jobId, controller);
@@ -961,7 +1060,39 @@ export async function buildServer() {
   // Get Render Job Status
   fastify.get('/api/renders/:jobId', async (request, reply) => {
     const { jobId } = request.params;
-    const job = renderJobs.get(jobId);
+    let job = renderJobs.get(jobId);
+    if (!job) {
+      const manifest = loadExportsManifest(storagePaths);
+      const exp = (manifest.exports || []).find(e => e.jobId === jobId);
+      if (exp && exp.outputPath && fs.existsSync(exp.outputPath)) {
+        job = {
+          id: exp.jobId,
+          projectId: exp.projectId,
+          targetId: exp.targetId,
+          status: 'done',
+          progress: 100,
+          currentFrame: 0,
+          totalFrames: 0,
+          percent: 100,
+          outputPath: exp.outputPath,
+          outputFileName: exp.outputFileName,
+          metadata: {
+            width: exp.width,
+            height: exp.height,
+            duration: exp.duration,
+            fps: exp.fps,
+            videoCodec: exp.videoCodec,
+            audioCodec: exp.audioCodec,
+            fileSize: exp.fileSize,
+            audioMetrics: exp.audioMetrics
+          },
+          error: null,
+          logs: ['Loaded from persistent export history'],
+          startedAt: exp.createdAt,
+          completedAt: exp.completedAt
+        };
+      }
+    }
     if (!job) return reply.code(404).send({ error: 'Render job not found' });
     return job;
   });
@@ -1002,13 +1133,92 @@ export async function buildServer() {
   // Download finished MP4
   fastify.get('/api/renders/:jobId/file', async (request, reply) => {
     const { jobId } = request.params;
-    const job = renderJobs.get(jobId);
-    if (!job || job.status !== 'done' || !fs.existsSync(job.outputPath)) {
+    let job = renderJobs.get(jobId);
+    if (!job) {
+      const manifest = loadExportsManifest(storagePaths);
+      const exp = (manifest.exports || []).find(e => e.jobId === jobId);
+      if (exp && exp.outputPath && fs.existsSync(exp.outputPath)) {
+        job = exp;
+      }
+    }
+    if (!job || !fs.existsSync(job.outputPath)) {
       return reply.code(404).send({ error: 'Rendered file not ready or not found' });
     }
     reply.header('Content-Disposition', `attachment; filename="${job.outputFileName}"`);
     reply.type('video/mp4');
     return fs.createReadStream(job.outputPath);
+  });
+
+  // Stream MP4 for in-app video playback
+  fastify.get('/api/renders/:jobId/stream', async (request, reply) => {
+    const { jobId } = request.params;
+    let job = renderJobs.get(jobId);
+    if (!job) {
+      const manifest = loadExportsManifest(storagePaths);
+      const exp = (manifest.exports || []).find(e => e.jobId === jobId);
+      if (exp && exp.outputPath && fs.existsSync(exp.outputPath)) {
+        job = exp;
+      }
+    }
+    if (!job || !fs.existsSync(job.outputPath)) {
+      return reply.code(404).send({ error: 'Rendered file not ready or not found' });
+    }
+    reply.type('video/mp4');
+    return fs.createReadStream(job.outputPath);
+  });
+
+  // Get project export history
+  fastify.get('/api/projects/:id/exports', async (request, reply) => {
+    const { id } = request.params;
+    const safeId = path.basename(id);
+    const manifestExports = getProjectExports(storagePaths, safeId);
+    const enriched = manifestExports.map(exp => {
+      const exists = exp.outputPath && fs.existsSync(exp.outputPath);
+      let realSize = exp.fileSize || 0;
+      if (exists) {
+        try { realSize = fs.statSync(exp.outputPath).size; } catch (_) {}
+      }
+      return {
+        ...exp,
+        fileExists: exists,
+        fileSize: realSize,
+        downloadUrl: `/api/renders/${exp.jobId}/file`,
+        streamUrl: `/api/renders/${exp.jobId}/stream`
+      };
+    });
+    return { exports: enriched };
+  });
+
+  // List all exports across projects
+  fastify.get('/api/exports', async () => {
+    const manifest = loadExportsManifest(storagePaths);
+    const enriched = (manifest.exports || []).map(exp => {
+      const exists = exp.outputPath && fs.existsSync(exp.outputPath);
+      let realSize = exp.fileSize || 0;
+      if (exists) {
+        try { realSize = fs.statSync(exp.outputPath).size; } catch (_) {}
+      }
+      return {
+        ...exp,
+        fileExists: exists,
+        fileSize: realSize,
+        downloadUrl: `/api/renders/${exp.jobId}/file`,
+        streamUrl: `/api/renders/${exp.jobId}/stream`
+      };
+    });
+    return { exports: enriched };
+  });
+
+  // Serve direct export file by filename
+  fastify.get('/api/exports/:filename', async (request, reply) => {
+    const { filename } = request.params;
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(EXPORTS_DIR, safeFilename);
+    if (!fs.existsSync(filePath)) {
+      return reply.code(404).send({ error: 'Exported file not found' });
+    }
+    reply.type('video/mp4');
+    return fs.createReadStream(filePath);
   });
 
   // Cancel render job (terminates processes and scratch files)
@@ -1028,6 +1238,10 @@ export async function buildServer() {
     jobEmitter.emit(`job:${jobId}`, { ...job });
 
     cleanupRenderTemp(jobId, storagePaths);
+
+    if (job.outputPath && fs.existsSync(job.outputPath)) {
+      try { fs.unlinkSync(job.outputPath); } catch (_) {}
+    }
 
     return { success: true, message: `Job ${jobId} cancelled successfully` };
   });
@@ -1217,11 +1431,19 @@ async function executeRenderJob(job, project, signal = null) {
     job.progress = 100;
     job.completedAt = new Date().toISOString();
     job.logs.push(`Render complete and verified! Output: ${job.outputFileName} (${(probe.fileSize / 1024).toFixed(1)} KB)`);
+    try {
+      recordExportInManifest(storagePaths, job);
+    } catch (manifestErr) {
+      console.warn('Failed to record export in persistent manifest:', manifestErr.message);
+    }
     jobEmitter.emit(`job:${job.id}`, { ...job });
   } catch (err) {
+    if (job.outputPath && fs.existsSync(job.outputPath) && job.status !== 'done') {
+      try { fs.unlinkSync(job.outputPath); } catch (_) {}
+    }
     if (err.name === 'AbortError' || signal?.aborted) {
       job.status = 'cancelled';
-      job.logs.push('Render cancelled and aborted.');
+      job.logs.push('Render cancelled and aborted. Partial files removed.');
       jobEmitter.emit(`job:${job.id}`, { ...job });
       return;
     }

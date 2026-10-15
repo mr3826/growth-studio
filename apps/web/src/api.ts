@@ -90,19 +90,28 @@ export async function fetchPreflight(projectId: string): Promise<PreflightReport
   return res.json();
 }
 
-export async function queueRender(projectId: string, targetId: string): Promise<{ jobId: string }> {
+export async function queueRender(projectId: string, targetId: string, project?: any): Promise<{ jobId: string }> {
   const res = await fetch(`${API_BASE}/projects/${projectId}/renders`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ targetId })
+    body: JSON.stringify({ targetId, project })
   });
-  if (!res.ok) throw new Error('Failed to queue render');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to queue render');
+  }
   return res.json();
 }
 
 export async function fetchRenderJob(jobId: string): Promise<RenderJob> {
   const res = await fetch(`${API_BASE}/renders/${jobId}`);
   if (!res.ok) throw new Error('Failed to fetch render job');
+  return res.json();
+}
+
+export async function fetchProjectExports(projectId: string): Promise<{ exports: ExportRecord[] }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/exports`);
+  if (!res.ok) throw new Error('Failed to fetch project exports');
   return res.json();
 }
 
@@ -120,6 +129,10 @@ export function getPreviewHtmlUrl(projectId: string, targetId: string) {
 
 export function getDownloadUrl(jobId: string) {
   return `${API_BASE}/renders/${jobId}/file`;
+}
+
+export function getStreamUrl(jobId: string) {
+  return `${API_BASE}/renders/${jobId}/stream`;
 }
 
 export async function fetchNarrationStatus(): Promise<NarrationStatus> {

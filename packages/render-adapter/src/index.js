@@ -97,6 +97,30 @@ export function probeMedia(filePath) {
 }
 
 /**
+ * Fully decodes the video and audio streams using ffmpeg -f null - to verify
+ * that the container, all packets, and all frames decode with zero errors.
+ */
+export function verifyMediaDecode(filePath) {
+  return new Promise((resolve, reject) => {
+    const ff = spawn('ffmpeg', [
+      '-v', 'error',
+      '-xerror',
+      '-i', filePath,
+      '-f', 'null', '-'
+    ]);
+    let stderr = '';
+    ff.stderr.on('data', d => { stderr += d.toString(); });
+    ff.on('close', code => {
+      if (code !== 0 || stderr.trim().length > 0) {
+        return reject(new Error(`Complete MP4 decode check failed (exit code ${code}): ${stderr.trim() || 'stream decode error'}`));
+      }
+      resolve({ decoded: true });
+    });
+    ff.on('error', reject);
+  });
+}
+
+/**
  * Measure audio volume levels (mean and max dB) using ffmpeg volumedetect.
  */
 export function measureAudioVolume(filePath) {
@@ -461,6 +485,10 @@ export async function renderVideo({
 
   // Probe output video to verify file properties
   const probeResult = await probeMedia(outputPath);
+
+  // Full decode verification: ensures container and all audio/video packets decode with zero errors
+  await verifyMediaDecode(outputPath);
+
   const volumeMetrics = await measureAudioVolume(outputPath);
   const silenceMetrics = await detectSilence(outputPath);
 
